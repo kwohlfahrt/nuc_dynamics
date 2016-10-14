@@ -1,4 +1,5 @@
 from nuc_cython import *
+
 # ### Simple annealing protocol
 
 # In[ ]:
@@ -11,16 +12,15 @@ def anneal_structure(coords, restraintIndices, restraintLimits,
   temperature decay and sigmoidal repulsion scheme.
   """
 
-  from random import seed
   from math import atan, log, exp, pi
   from numpy import array, random, ones, int32
 
   # Consider masses and fixed particles
 
   if randSeed is None:
-    seed()
+    random.seed()
   else:
-    seed(randSeed)
+    random.seed(randSeed)
 
   # Ensure inputs are numpy.ndarray
   coords = array(coords)
@@ -357,8 +357,7 @@ def get_random_coords(pos_dict, chromosomes, num_models, radius=10.0):
   a sphere of given radius
   """
 
-  from random import uniform
-  from numpy import empty
+  from numpy import empty, random
 
   num_particles = sum([len(pos_dict[chromo]) for chromo in chromosomes])
   coords = empty((num_models, num_particles, 3))
@@ -370,9 +369,9 @@ def get_random_coords(pos_dict, chromosomes, num_models, radius=10.0):
       x = y = z = radius
 
       while x*x + y*y + z*z >= r2:
-        x = radius * (2*uniform(0,1) - 1)
-        y = radius * (2*uniform(0,1) - 1)
-        z = radius * (2*uniform(0,1) - 1)
+        x = random.uniform(-radius, radius)
+        y = random.uniform(-radius, radius)
+        z = random.uniform(-radius, radius)
 
       coords[m,i] = [x,y,z]
 

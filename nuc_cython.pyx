@@ -2,8 +2,6 @@ from libc.math cimport exp, abs, sqrt, ceil
 from numpy cimport ndarray, double_t, int_t
 import numpy, cython, time, gc, random
 
-from nuc_dynamics import *
-
 BOLTZMANN_K = 0.0019872041
 
 #ctypedef int_t   int
