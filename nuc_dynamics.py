@@ -148,7 +148,7 @@ def export_pdb_coords(file_path, coords_dict, seq_pos_dict, particle_size, scale
 
       chromo_model_coords = coords_dict[chromo][m]
 
-      if not len(coords):
+      if not len(chromo_model_coords):
         continue
 
       pos = seq_pos_dict[chromo]
