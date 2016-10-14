@@ -1,59 +1,5 @@
 from nuc_cython import *
 
-def anneal_structure(coords, restraintIndices, restraintLimits,
-                    tempMax=5000.0, tempMin=10.0, tempSteps=500,
-                    dynSteps=100, timeStep=0.001, randSeed=None):
-  """
-  A simple single-stage annealing protocol with exponential
-  temperature decay and sigmoidal repulsion scheme.
-  """
-
-  from math import atan, log, exp, pi
-  from numpy import array, random, ones, int32
-
-  # Consider masses and fixed particles
-
-  if randSeed is None:
-    random.seed()
-  else:
-    random.seed(randSeed)
-
-  # Ensure inputs are numpy.ndarray
-  coords = array(coords)
-  restraintIndices = array(restraintIndices, dtype=int32)
-  restraintLimits = array(restraintLimits)
-
-  nPoints = len(coords)
-
-  # Masses and radii not used, just set to 1.0
-  masses = radii = ones(nPoints, float)
-
-  # Ambiguiuty not used, but represents the stride of sequential, grouped restraints
-  ambiguity = ones(len(restraintIndices), int32)
-
-  adj = 1.0 / atan(10.0)
-  decay = log(tempMax/tempMin)
-
-  for step in range(tempSteps):
-    frac = step/float(tempSteps)
-
-    # exponential temp decay
-    temp = tempMax * exp(-decay*frac)
-
-    # sigmoidal repusion scheme
-    repulse = 0.5 + adj * atan(frac*20.0-10) / pi
-
-    # update coordinates
-    runDynamics(coords, masses, radii, restraintIndices, restraintLimits,
-                ambiguity, temp, timeStep, dynSteps, repulse,
-                repDist=1.5, printInterval=int32(100))
-
-    # Center
-    coords -= coords.mean(axis=0)
-
-  return coords
-
-
 def load_ncc_file(file_path):
   """Load chromosome and contact data from NCC format file, as output from NucProcess"""
 
