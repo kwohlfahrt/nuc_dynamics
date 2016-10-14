@@ -1,7 +1,10 @@
-from nuc_cython import *
+from nuc_cython import (runDynamics, getSupportedPairs, calc_restraints,
+                        concatenate_restraints, getInterpolatedCoords)
 
 def load_ncc_file(file_path):
   """Load chromosome and contact data from NCC format file, as output from NucProcess"""
+
+  from numpy import array
 
   if file_path.endswith('.gz'):
     import gzip
@@ -50,7 +53,7 @@ def load_ncc_file(file_path):
 
   for chr_a in contact_dict:
     for chr_b in contact_dict[chr_a]:
-      contacts = numpy.array(contact_dict[chr_a][chr_b]).T
+      contacts = array(contact_dict[chr_a][chr_b]).T
       contact_dict[chr_a][chr_b] = contacts
 
       seq_pos_a = contacts[1]
@@ -196,14 +199,15 @@ def remove_isolated_contacts(contact_dict, threshold=int(2e6)):
   Select only contacts which are within a given sequence separation of another
   contact, for the same chromosome pair
   """
+  from numpy import array, int32
 
   for chromoA in contact_dict:
     for chromoB in contact_dict[chromoA]:
       contacts = contact_dict[chromoA][chromoB]
-      positions = numpy.array(contacts[:2], numpy.int32).T
+      positions = array(contacts[:2], int32).T
 
       if len(positions): # Sometimes empty e.g. for MT, Y chromos
-        active_idx = getSupportedPairs(positions, numpy.int32(threshold))
+        active_idx = getSupportedPairs(positions, int32(threshold))
         contact_dict[chromoA][chromoB] = contacts[:,active_idx]
 
   return contact_dict
@@ -213,7 +217,7 @@ def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, partic
   """
   Remove contacts whith structure distances that exceed a given threshold
   """
-  from numpy import int32
+  from numpy import int32, sqrt
 
   for chr_a in contact_dict:
     for chr_b in contact_dict[chr_a]:
@@ -232,11 +236,11 @@ def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, partic
         coord_data_b = getInterpolatedCoords([chr_b], {chr_b:contact_pos_b}, particle_seq_pos, coords_b[m])
 
         deltas = coord_data_a - coord_data_b
-        dists = numpy.sqrt((deltas*deltas).sum(axis=1))
+        dists = sqrt((deltas*deltas).sum(axis=1))
         struc_dists.append(dists)
 
       # Average over all conformational models
-      struc_dists = numpy.array(struc_dists).T.mean(axis=1)
+      struc_dists = array(struc_dists).T.mean(axis=1)
 
       # Select contacts with distances below distance threshold
       indices = (struc_dists < threshold).nonzero()[0]
@@ -331,7 +335,7 @@ def anneal_genome(chromosomes, contact_dict, num_models, particle_size,
     resolution) stage.
     """
 
-    from numpy import int32, ones, empty
+    from numpy import int32, ones, empty, random
     from math import log, exp, atan, pi
     import gc
 
