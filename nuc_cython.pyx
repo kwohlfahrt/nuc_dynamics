@@ -1,6 +1,6 @@
 from libc.math cimport exp, abs, sqrt, ceil
 from numpy cimport ndarray, double_t, int_t
-import numpy, cython, time, gc, random
+import numpy, time
 
 BOLTZMANN_K = 0.0019872041
 
