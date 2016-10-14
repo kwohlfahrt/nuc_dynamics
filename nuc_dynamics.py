@@ -1,9 +1,5 @@
 from nuc_cython import *
 
-# ### Simple annealing protocol
-
-# In[ ]:
-
 def anneal_structure(coords, restraintIndices, restraintLimits,
                     tempMax=5000.0, tempMin=10.0, tempSteps=500,
                     dynSteps=100, timeStep=0.001, randSeed=None):
@@ -57,46 +53,6 @@ def anneal_structure(coords, restraintIndices, restraintLimits,
 
   return coords
 
-
-# ### Test annealing
-
-# In[ ]:
-
-from numpy import random
-
-# Random particle coordinates - 20 test points of (x,y,z)
-nCoords = 20
-coords = random.uniform(-1.0, 1.0, (nCoords,3))
-
-# Each pair represents a connection between a pair of particles
-# Restraint indices refer to indices in coordinate array
-rIndices = [(0, 1), (0, 5), (0, 18), (1, 0), (1, 2),
-            (1, 9), (2, 1), (2, 3), (2, 10), (3, 2),
-            (3, 4), (3, 17), (4, 3), (4, 5), (4, 11),
-            (5, 0), (5, 4), (5, 12), (6, 7), (6, 17),
-            (6, 19), (7, 6), (7, 14), (7, 15), (7, 16),
-            (8, 18), (9, 1), (10, 2), (11, 4), (12, 5),
-            (13, 17), (14, 7), (15, 7), (16, 7), (17, 3),
-            (17, 6), (17, 13), (18, 0), (18, 8), (19, 6)]
-
-# Distances - upper and lower bounds for each particle
-# Unform upper and lower bounds for test restraints
-lower = 0.8
-upper = 1.2
-rDists = [(0.8, 1.2)] * len(rIndices)
-
-# Run calculation
-coords = anneal_structure(coords, rIndices, rDists)
-
-# Show results
-for i, c in enumerate(coords):
-  print('%3d' % i, c)
-
-
-
-# ### Multi-scale repulsion scheme for whole genome structures
-
-# In[ ]:
 
 def load_ncc_file(file_path):
   """Load chromosome and contact data from NCC format file, as output from NucProcess"""
@@ -175,8 +131,6 @@ def load_ncc_file(file_path):
 
   return chromosomes, chromo_limits, contact_dict
 
-
-# In[ ]:
 
 def export_pdb_coords(file_path, coords_dict, seq_pos_dict, particle_size, scale=1.0, extended=True):
 
@@ -291,8 +245,6 @@ def export_pdb_coords(file_path, coords_dict, seq_pos_dict, particle_size, scale
 
 
 
-# In[ ]:
-
 def remove_isolated_contacts(contact_dict, threshold=int(2e6)):
   """
   Select only contacts which are within a given sequence separation of another
@@ -310,8 +262,6 @@ def remove_isolated_contacts(contact_dict, threshold=int(2e6)):
 
   return contact_dict
 
-
-# In[ ]:
 
 def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, particle_size, threshold=5.0):
   """
@@ -349,8 +299,6 @@ def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, partic
   return contact_dict
 
 
-# In[ ]:
-
 def get_random_coords(pos_dict, chromosomes, num_models, radius=10.0):
   """
   Get random, uniformly sampled coorinate positions, restricted to
@@ -378,8 +326,6 @@ def get_random_coords(pos_dict, chromosomes, num_models, radius=10.0):
   return coords
 
 
-# In[ ]:
-
 def pack_chromo_coords(coords_dict, chromosomes):
   """
   Place chromosome 3D coordinates stored in a dictionary keyed by
@@ -402,8 +348,6 @@ def pack_chromo_coords(coords_dict, chromosomes):
 
   return coords
 
-
-# In[ ]:
 
 def unpack_chromo_coords(coords, chromosomes, seq_pos_dict):
   """
@@ -430,8 +374,6 @@ def unpack_chromo_coords(coords, chromosomes, seq_pos_dict):
 
   return coords_dict
 
-
-# In[ ]:
 
 def anneal_genome(chromosomes, contact_dict, num_models, particle_size,
                   general_calc_params, anneal_params,
@@ -549,8 +491,6 @@ def anneal_genome(chromosomes, contact_dict, num_models, particle_size,
 
 
 
-# In[ ]:
-
 from time import time
 
 # Number of alternative conformations to generate from repeat calculations
@@ -610,6 +550,3 @@ for stage, particle_size in enumerate(particle_sizes):
 save_path = 'example_chromo_data/Cell_1_structure.pdb'
 export_pdb_coords(save_path, coords_dict, particle_seq_pos, particle_size)
 print('Saved structure file to: %s' % save_path)
-
-
-# In[ ]:
