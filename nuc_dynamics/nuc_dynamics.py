@@ -56,6 +56,13 @@ def calc_limits(contact_dict):
   return chromo_limits
 
 
+def load_image_coords(file_path):
+  from pickle import load
+
+  with file_path.open("rb") as f:
+    return load(f)
+
+
 def export_nuc_coords(file_path, coords_dict, seq_pos_dict, restraint_dict, calc_args):
   import h5py
 
@@ -452,6 +459,7 @@ def main(args=None):
 
     parser = ArgumentParser(description="Calculate a structure from a contact file.")
     parser.add_argument("contacts", type=Path, help="The .ncc file to load contacts from")
+    parser.add_argument("CENPA", type=Path, help="The .pickle file to load CENPA coordinates from")
     parser.add_argument("output", type=Path, help="The .nuc file to save the structure in")
     parser.add_argument("--isolated-threshold", type=float, default=2e6,
                         help="The distance threshold for isolated contacts")
@@ -481,6 +489,8 @@ def main(args=None):
 
     contacts = load_ncc_file(str(args.contacts))
     contacts = remove_isolated_contacts(contacts, threshold=args.isolated_threshold)
+
+    image_coords = {'CENPA': load_image_coords(args.CENPA)}
 
     coords, seq_pos, restraints = hierarchical_annealing(
         contacts, args.particle_sizes,
