@@ -100,7 +100,7 @@ def export_pdb_coords(file_path, coords_dict, seq_pos_dict, particle_size, scale
   file_obj = open(file_path, 'w')
   write = file_obj.write
 
-  chromosomes = list(seq_pos_dict.keys())
+  chromosomes = list(sorted(seq_pos_dict.keys()))
   num_models = len(coords_dict[chromosomes[0]])
   title = 'NucDynamics genome structure export'
 
@@ -126,7 +126,7 @@ def export_pdb_coords(file_path, coords_dict, seq_pos_dict, particle_size, scale
     c = 0
     j = 1
     seqPrev = None
-    for chromo in seq_pos_dict:
+    for chromo in chromosomes:
 
       if chromo.isdigit():
         idx = int(chromo) - 1
