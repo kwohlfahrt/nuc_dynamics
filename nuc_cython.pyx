@@ -424,7 +424,7 @@ def getInterpolatedCoords(chromosomes, posDict, prevPosDict, ndarray[double, ndi
 
   b = i
 
-  for chrA in posDict:
+  for chrA in chromosomes:
     i0 = offsets[chrA]
     j0 = prevOffsets[chrA]
     positions = posDict[chrA]
