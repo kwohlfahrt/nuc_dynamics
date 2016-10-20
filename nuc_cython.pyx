@@ -591,10 +591,6 @@ def runDynamics(ndarray[double, ndim=2] coords,
 
 
 
-from libc.math cimport exp, abs, sqrt, ceil
-from numpy cimport ndarray, double_t, int_t
-import numpy
-
 def calc_restraints(chromosomes, contact_dict, int particle_size=10000,
                     float scale=1.0, float exponent=-0.33,
                     float lower=0.8, float upper=1.2,
