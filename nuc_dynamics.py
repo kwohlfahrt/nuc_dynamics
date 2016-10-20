@@ -462,7 +462,7 @@ anneal_params = {'temp_start':5000.0, 'temp_end':10.0, 'temp_steps':500,
 particle_sizes = [8e6, 4e6, 2e6, 4e5, 2e5, 1e5]
 
 # Load single-cell Hi-C data from NCC contact file, as output from NucProcess
-chromosomes, chromo_limits, contact_dict = load_ncc_file('example_chromo_data/Cell_1_contacts.ncc')
+chromosomes, chromo_limits, contact_dict = load_ncc_file('example_chromo_data/P36D6.ncc')
 
 # Only use contacts which are supported by others nearby in sequence, in the initial instance
 remove_isolated_contacts(contact_dict, threshold=2e6)
@@ -497,6 +497,6 @@ for stage, particle_size in enumerate(particle_sizes):
     prev_seq_pos = particle_seq_pos
 
 # Save final coords as PDB format file
-save_path = 'example_chromo_data/Cell_1_structure.pdb'
+save_path = 'example_chromo_data/P36D6.pdb'
 export_pdb_coords(save_path, coords_dict, particle_seq_pos, particle_size)
 print('Saved structure file to: %s' % save_path)
