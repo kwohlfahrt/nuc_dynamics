@@ -60,7 +60,7 @@ cdef int getRepulsionList(ndarray[int,   ndim=2] repList,
   return n
 
 
-cdef double getTemp(ndarray[double] masses,
+cdef double getTemp(ndarray[double, ndim=1] masses,
                     ndarray[double, ndim=2] veloc,
                     int nCoords):
   cdef int i
@@ -112,7 +112,7 @@ def getStats(ndarray[int,   ndim=2] restIndices,
   return nViol, sqrt(s/nRest)
 
 
-cdef void updateMotion(ndarray[double] masses,
+cdef void updateMotion(ndarray[double, ndim=1] masses,
                        ndarray[double, ndim=2] forces,
                        ndarray[double, ndim=2] accel,
                        ndarray[double, ndim=2] veloc,
@@ -143,7 +143,7 @@ cdef void updateMotion(ndarray[double] masses,
     veloc[i,2] += tStep * accel[i,2]
 
 
-cdef void updateVelocity(ndarray[double] masses,
+cdef void updateVelocity(ndarray[double, ndim=1] masses,
                          ndarray[double, ndim=2] forces,
                          ndarray[double, ndim=2] accel,
                          ndarray[double, ndim=2] veloc,
