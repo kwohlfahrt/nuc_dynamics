@@ -590,7 +590,6 @@ def runDynamics(ndarray[double, ndim=2] coords,
   return tTaken, nRep
 
 
-
 def calc_restraints(chromosomes, contact_dict, int particle_size=10000,
                     float scale=1.0, float exponent=-0.33,
                     float lower=0.8, float upper=1.2,
@@ -609,34 +608,11 @@ def calc_restraints(chromosomes, contact_dict, int particle_size=10000,
   cdef ndarray[int, ndim=1] seq_pos_b
   cdef ndarray[int, ndim=2] limits         # shape: (chromoId, 2:[start, end])
 
-  num_contacts_dict = {} # Total num contacts for each chromosomes
   pos_dict = {}          # Start sequence position for each particle in each chromosome
   restraint_dict = {}    # Final restraints for each pair of chromosomes
 
   chromos = set(chromosomes)
   nc = len(chromosomes)
-
-  # Num contacts per chromo for mem allocations
-  for chrA in contact_dict:
-    if chrA not in chromos:
-      continue
-
-    for chrB in contact_dict[chrA]:
-      if chrB not in chromos:
-        continue
-
-      contacts = contact_dict[chrA][chrB]
-      n = len(contacts[0])
-
-      if chrA in num_contacts_dict:
-        num_contacts_dict[chrA] += n
-      else:
-        num_contacts_dict[chrA] = n
-
-      if chrB in num_contacts_dict:
-        num_contacts_dict[chrB] += n
-      else:
-        num_contacts_dict[chrB] = n
 
   chromo_idx = {chromo:i for i, chromo in enumerate(chromosomes)}
   limits = numpy.zeros((nc,2), numpy.int32)
