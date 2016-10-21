@@ -58,9 +58,11 @@ def calc_limits(contact_dict):
   for chr_a in contact_dict:
     for chr_b in contact_dict[chr_a]:
       contacts = contact_dict[chr_a][chr_b]
+      if contacts.shape[1] < 1:
+        continue
 
-      seq_pos_a = contacts[1]
-      seq_pos_b = contacts[2]
+      seq_pos_a = contacts[0]
+      seq_pos_b = contacts[1]
 
       min_a = min(seq_pos_a)
       max_a = max(seq_pos_a)
@@ -302,7 +304,22 @@ def unpack_chromo_coords(coords, chromosomes, seq_pos_dict):
   return coords_dict
 
 
-def anneal_genome(contact_dict, chromo_limits, num_models, particle_size,
+def calc_bins(chromo_limits, particle_size):
+  from numpy import arange
+  from math import ceil
+
+  bins = {}
+  for chr, (start, end) in chromo_limits.items():
+    start = (start // particle_size) * particle_size
+    end = (end // particle_size + bool(end % particle_size)) * particle_size
+    # TODO (kjw53): Original uses ceil, then adds additional particle. Why?
+    end += particle_size
+
+    bins[chr] = arange(start, end, particle_size, dtype='int32')
+  return bins
+
+
+def anneal_genome(contact_dict, num_models, particle_size,
                   general_calc_params, anneal_params,
                   prev_seq_pos_dict=None, start_coords=None):
     """
@@ -318,13 +335,14 @@ def anneal_genome(contact_dict, chromo_limits, num_models, particle_size,
 
     random.seed(general_calc_params['random_seed'])
     particle_size = int32(particle_size)
-    chromosomes = sorted(chromo_limits)
+    seq_pos_dict = calc_bins(calc_limits(contact_dict), particle_size)
+    chromosomes = sorted(seq_pos_dict)
 
     # Calculate distance restrains from contact data
-    restraint_dict, seq_pos_dict = calc_restraints(chromosomes, contact_dict, particle_size,
-                                                   scale=1.0, exponent=general_calc_params['dist_power_law'],
-                                                   lower=general_calc_params['contact_dist_lower'],
-                                                   upper=general_calc_params['contact_dist_upper'])
+    restraint_dict = calc_restraints(contact_dict, seq_pos_dict, particle_size,
+                                     scale=1.0, exponent=general_calc_params['dist_power_law'],
+                                     lower=general_calc_params['contact_dist_lower'],
+                                     upper=general_calc_params['contact_dist_upper'])
 
     # Concatenate chromosomal data into a single array of particle restraints
     # for structure calculation. Add backbone restraints between seq. adjasent particles.
@@ -441,7 +459,6 @@ particle_sizes = [8e6, 4e6, 2e6, 4e5, 2e5, 1e5]
 
 # Load single-cell Hi-C data from NCC contact file, as output from NucProcess
 contact_dict = load_ncc_file('example_chromo_data/P36D6.ncc')
-chromo_limits = calc_limits(contact_dict)
 
 # Only use contacts which are supported by others nearby in sequence, in the initial instance
 remove_isolated_contacts(contact_dict, threshold=2e6)
@@ -466,8 +483,8 @@ for stage, particle_size in enumerate(particle_sizes):
         remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos,
                                  particle_size, threshold=5.0)
 
-    coords_dict, particle_seq_pos = anneal_genome(contact_dict, chromo_limits, num_models,
-                                                  particle_size, general_calc_params, anneal_params,
+    coords_dict, particle_seq_pos = anneal_genome(contact_dict, num_models, particle_size,
+                                                  general_calc_params, anneal_params,
                                                   prev_seq_pos, start_coords)
 
     # Next stage based on previous stage's 3D coords

@@ -476,7 +476,6 @@ def getInterpolatedCoords(chromosomes, posDict, prevPosDict, ndarray[double, ndi
   return newCoords
 
 
-
 def runDynamics(ndarray[double, ndim=2] coords,
                 ndarray[double, ndim=1] masses,
                 ndarray[double, ndim=1] radii,
@@ -590,7 +589,7 @@ def runDynamics(ndarray[double, ndim=2] coords,
   return tTaken, nRep
 
 
-def calc_restraints(chromosomes, contact_dict, int particle_size=10000,
+def calc_restraints(contact_dict, pos_dict, int particle_size=10000,
                     float scale=1.0, float exponent=-0.33,
                     float lower=0.8, float upper=1.2,
                     int min_count=1):
@@ -608,65 +607,15 @@ def calc_restraints(chromosomes, contact_dict, int particle_size=10000,
   cdef ndarray[int, ndim=1] seq_pos_b
   cdef ndarray[int, ndim=2] limits         # shape: (chromoId, 2:[start, end])
 
-  pos_dict = {}          # Start sequence position for each particle in each chromosome
   restraint_dict = {}    # Final restraints for each pair of chromosomes
 
-  chromos = set(chromosomes)
-  nc = len(chromosomes)
-
-  chromo_idx = {chromo:i for i, chromo in enumerate(chromosomes)}
-  limits = numpy.zeros((nc,2), numpy.int32)
-
-  # Get chromosome ranges
-  for chrA in contact_dict:
-    if chrA not in chromos:
-      continue
-
-    a = chromo_idx[chrA]
-
-    for chrB in contact_dict[chrA]:
-      if chrB not in chromos:
-        continue
-
-      b = chromo_idx[chrB]
-      contacts = contact_dict[chrA][chrB]
-      n = len(contacts[0])
-
-      for i in range(n):
-
-        if limits[a,0] == 0: # zero is not a valid seq pos anyhow
-          limits[a,0] = contacts[0,i]
-        elif contacts[0,i] < limits[a,0]:
-          limits[a,0] = contacts[0,i]
-
-        if limits[b,0] == 0:
-          limits[b,0] = contacts[1,i]
-        elif contacts[1,i] < limits[b,0]:
-          limits[b,0] = contacts[1,i]
-
-        if contacts[0,i] > limits[a,1]:
-          limits[a,1] = contacts[0,i]
-
-        if contacts[1,i] > limits[b,1]:
-          limits[b,1] = contacts[1,i]
-
-
-  # Shift extremities of chromosome ranges to lie exactly on particle region edges
-  for a in range(nc):
-    limits[a,0] = particle_size * (limits[a,0]/particle_size)
-    limits[a,1] = particle_size * <int>(ceil(<float>limits[a,1]/particle_size))
-
-  # Get particle region start positions for each chromosome
-  for chromo in chromosomes:
-    a = chromo_idx[chromo]
-    pos_dict[chromo] = numpy.arange(limits[a,0], limits[a,1] + particle_size, particle_size, numpy.int32)
+  chromos = set(pos_dict)
 
   # Get restraint indices, do binning of contact observations
   for chrA in contact_dict:
     if chrA not in chromos:
       continue
 
-    a = chromo_idx[chrA]
     na = len(pos_dict[chrA])
     seq_pos_a = pos_dict[chrA]
     restraint_dict[chrA] = {}
@@ -675,7 +624,6 @@ def calc_restraints(chromosomes, contact_dict, int particle_size=10000,
       if chrB not in chromos:
         continue
 
-      b = chromo_idx[chrB]
       nb = len(pos_dict[chrB])
       seq_pos_b = pos_dict[chrB]
 
@@ -727,7 +675,7 @@ def calc_restraints(chromosomes, contact_dict, int particle_size=10000,
 
       restraint_dict[chrA][chrB] = restraints[:,:k]
 
-  return restraint_dict, pos_dict
+  return restraint_dict
 
 
 def concatenate_restraints(restraint_dict, pos_dict, particle_size,
