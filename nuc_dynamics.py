@@ -18,7 +18,6 @@ def load_ncc_file(file_path):
   num_obs = 1
 
   contact_dict = {}
-  chromosomes = set()
 
   for line in file_obj:
     chr_a, f_start_a, f_end_a, start_a, end_a, strand_a, chr_b, f_start_b, f_end_b, start_b, end_b, strand_b, ambig_group, pair_id, swap_pair = line.split()
@@ -39,22 +38,26 @@ def load_ncc_file(file_path):
 
     if chr_a not in contact_dict:
       contact_dict[chr_a] = {}
-      chromosomes.add(chr_a)
 
     if chr_b not in contact_dict[chr_a]:
       contact_dict[chr_a][chr_b] = []
-      chromosomes.add(chr_b)
 
     contact_dict[chr_a][chr_b].append((pos_a, pos_b, num_obs, int(ambig_group)))
 
   file_obj.close()
 
+  for chr_a in contact_dict:
+    for chr_b in contact_dict[chr_a]:
+      contact_dict[chr_a][chr_b] = array(contact_dict[chr_a][chr_b]).T
+  return contact_dict
+
+
+def calc_limits(contact_dict):
   chromo_limits = {}
 
   for chr_a in contact_dict:
     for chr_b in contact_dict[chr_a]:
-      contacts = array(contact_dict[chr_a][chr_b]).T
-      contact_dict[chr_a][chr_b] = contacts
+      contacts = contact_dict[chr_a][chr_b]
 
       seq_pos_a = contacts[1]
       seq_pos_b = contacts[2]
@@ -75,10 +78,7 @@ def load_ncc_file(file_path):
         chromo_limits[chr_b] = [min(prev_min, min_b), max(prev_max, max_b)]
       else:
         chromo_limits[chr_b] = [min_b, max_b]
-
-  chromosomes = sorted(chromosomes)
-
-  return chromosomes, chromo_limits, contact_dict
+  return chromo_limits
 
 
 def export_pdb_coords(file_path, coords_dict, seq_pos_dict, particle_size, scale=1.0, extended=True):
@@ -302,7 +302,7 @@ def unpack_chromo_coords(coords, chromosomes, seq_pos_dict):
   return coords_dict
 
 
-def anneal_genome(chromosomes, contact_dict, num_models, particle_size,
+def anneal_genome(contact_dict, chromo_limits, num_models, particle_size,
                   general_calc_params, anneal_params,
                   prev_seq_pos_dict=None, start_coords=None):
     """
@@ -318,6 +318,7 @@ def anneal_genome(chromosomes, contact_dict, num_models, particle_size,
 
     random.seed(general_calc_params['random_seed'])
     particle_size = int32(particle_size)
+    chromosomes = sorted(chromo_limits)
 
     # Calculate distance restrains from contact data
     restraint_dict, seq_pos_dict = calc_restraints(chromosomes, contact_dict, particle_size,
@@ -439,7 +440,8 @@ anneal_params = {'temp_start':5000.0, 'temp_end':10.0, 'temp_steps':500,
 particle_sizes = [8e6, 4e6, 2e6, 4e5, 2e5, 1e5]
 
 # Load single-cell Hi-C data from NCC contact file, as output from NucProcess
-chromosomes, chromo_limits, contact_dict = load_ncc_file('example_chromo_data/P36D6.ncc')
+contact_dict = load_ncc_file('example_chromo_data/P36D6.ncc')
+chromo_limits = calc_limits(contact_dict)
 
 # Only use contacts which are supported by others nearby in sequence, in the initial instance
 remove_isolated_contacts(contact_dict, threshold=2e6)
@@ -464,8 +466,8 @@ for stage, particle_size in enumerate(particle_sizes):
         remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos,
                                  particle_size, threshold=5.0)
 
-    coords_dict, particle_seq_pos = anneal_genome(chromosomes, contact_dict, num_models, particle_size,
-                                                  general_calc_params, anneal_params,
+    coords_dict, particle_seq_pos = anneal_genome(contact_dict, chromo_limits, num_models,
+                                                  particle_size, general_calc_params, anneal_params,
                                                   prev_seq_pos, start_coords)
 
     # Next stage based on previous stage's 3D coords
