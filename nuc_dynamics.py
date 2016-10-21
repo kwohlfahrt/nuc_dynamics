@@ -276,29 +276,6 @@ def get_random_coords(pos_dict, chromosomes, num_models, radius=10.0):
   return coords
 
 
-def pack_chromo_coords(coords_dict, chromosomes):
-  """
-  Place chromosome 3D coordinates stored in a dictionary keyed by
-  chromosome name into a single, ordered array. The chromosomes argument
-  is required to set the correct array storage order.
-  """
-
-  from numpy import empty
-
-  chromo_num_particles = [len(coords_dict[chromo][0]) for chromo in chromosomes]
-  n_particles = sum(chromo_num_particles)
-  n_models = len(coords_dict[chromosomes[0]])
-  coords = empty((n_models, n_particles, 3), float)
-
-  j = 0
-  for i, chromo in enumerate(chromosomes):
-    span = chromo_num_particles[i]
-    coords[:,j:j+span] = coords_dict[chromo]
-    j += span
-
-  return coords
-
-
 def unpack_chromo_coords(coords, chromosomes, seq_pos_dict):
   """
   Exctract coords for multiple chromosomes stored in a single array into
@@ -335,7 +312,7 @@ def anneal_genome(chromosomes, contact_dict, num_models, particle_size,
     resolution) stage.
     """
 
-    from numpy import int32, ones, empty, random
+    from numpy import int32, ones, empty, random, concatenate
     from math import log, exp, atan, pi
     import gc
 
@@ -363,7 +340,7 @@ def anneal_genome(chromosomes, contact_dict, num_models, particle_size,
 
     else:
       # Convert starting coord dict into single array
-      coords = pack_chromo_coords(start_coords, chromosomes)
+      coords = concatenate([start_coords[chr] for chr in chromosomes], axis=1)
       num_coords = sum([len(seq_pos_dict[c]) for c in chromosomes])
 
       if coords.shape[1] != num_coords: # Change of particle_size
