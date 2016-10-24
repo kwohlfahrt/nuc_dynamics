@@ -333,12 +333,6 @@ def anneal_genome(contact_dict, num_models, particle_size,
                                      lower=general_calc_params['contact_dist_lower'],
                                      upper=general_calc_params['contact_dist_upper'])
 
-    # Concatenate chromosomal data into a single array of particle restraints
-    # for structure calculation. Add backbone restraints between seq. adjasent particles.
-    restraint_indices, restraint_dists = concatenate_restraints(restraint_dict, seq_pos_dict, particle_size,
-                                                                general_calc_params['backbone_dist_lower'],
-                                                                general_calc_params['backbone_dist_upper'])
-
     # Setup starting structure
     if (start_coords is None) or (prev_seq_pos_dict is None):
       coords = {chr: get_random_coords((num_models, len(seq_pos_dict[chr])),
@@ -356,12 +350,18 @@ def anneal_genome(contact_dict, num_models, particle_size,
         else:
           coords[chr] = start_coords[chr]
 
-    coords = concatenate([coords[chr] for chr in chromosomes], axis=1)
-    num_coords = coords.shape[1]
-
     # Equal unit masses and radii for all particles
-    masses = ones(num_coords,  float)
-    radii = ones(num_coords,  float)
+    masses = {chr: ones(len(pos), float) for chr, pos in seq_pos_dict.items()}
+    radii = {chr: ones(len(pos), float) for chr, pos in seq_pos_dict.items()}
+
+    # Concatenate chromosomal data into a single array of particle restraints
+    # for structure calculation. Add backbone restraints between seq. adjasent particles.
+    restraint_indices, restraint_dists = concatenate_restraints(restraint_dict, seq_pos_dict, particle_size,
+                                                                general_calc_params['backbone_dist_lower'],
+                                                                general_calc_params['backbone_dist_upper'])
+    coords = concatenate([coords[chr] for chr in chromosomes], axis=1)
+    masses = concatenate([masses[chr] for chr in chromosomes])
+    radii = concatenate([radii[chr] for chr in chromosomes])
 
     # Ambiguiity strides not used here, so set to 1
     num_restraints = len(restraint_indices)
