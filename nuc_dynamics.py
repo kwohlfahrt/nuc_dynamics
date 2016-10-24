@@ -257,25 +257,15 @@ def get_random_coords(pos_dict, chromosomes, num_models, radius=10.0):
   a sphere of given radius
   """
 
-  from numpy import empty, random
+  from numpy import random
+  from numpy.linalg import norm
 
   num_particles = sum([len(pos_dict[chromo]) for chromo in chromosomes])
-  coords = empty((num_models, num_particles, 3))
-  r2 = radius*radius
 
-  for m in range(num_models):
-
-    for i in range(num_particles):
-      x = y = z = radius
-
-      while x*x + y*y + z*z >= r2:
-        x = random.uniform(-radius, radius)
-        y = random.uniform(-radius, radius)
-        z = random.uniform(-radius, radius)
-
-      coords[m,i] = [x,y,z]
-
-  return coords
+  u = random.uniform(size=(num_models, num_particles))
+  x = random.normal(size=(num_models, num_particles, 3))
+  scaling = (radius * u ** (1/3)) / norm(x, axis=-1)
+  return scaling[..., None] * x
 
 
 def unpack_chromo_coords(coords, chromosomes, seq_pos_dict):
