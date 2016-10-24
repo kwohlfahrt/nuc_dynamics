@@ -219,7 +219,7 @@ def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, partic
   """
   Remove contacts whith structure distances that exceed a given threshold
   """
-  from numpy import int32, sqrt
+  from numpy import int32, sqrt, array
 
   for chr_a in contact_dict:
     for chr_b in contact_dict[chr_a]:
@@ -234,8 +234,8 @@ def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, partic
       struc_dists = []
 
       for m in range(len(coords_a)):
-        coord_data_a = getInterpolatedCoords([chr_a], {chr_a:contact_pos_a}, particle_seq_pos, coords_a[m])
-        coord_data_b = getInterpolatedCoords([chr_b], {chr_b:contact_pos_b}, particle_seq_pos, coords_b[m])
+        coord_data_a = getInterpolatedCoords(coords_a[m], contact_pos_a, particle_seq_pos[chr_a])
+        coord_data_b = getInterpolatedCoords(coords_b[m], contact_pos_b, particle_seq_pos[chr_b])
 
         deltas = coord_data_a - coord_data_b
         dists = sqrt((deltas*deltas).sum(axis=1))
@@ -317,8 +317,9 @@ def anneal_genome(contact_dict, num_models, particle_size,
     resolution) stage.
     """
 
-    from numpy import int32, ones, empty, random, concatenate
+    from numpy import int32, ones, empty, random, concatenate, stack
     from math import log, exp, atan, pi
+    from functools import partial
     import gc
 
     random.seed(general_calc_params['random_seed'])
@@ -343,21 +344,20 @@ def anneal_genome(contact_dict, num_models, particle_size,
       coords = {chr: get_random_coords((num_models, len(seq_pos_dict[chr])),
                                        general_calc_params['random_radius'])
                 for chr in chromosomes}
-      coords = concatenate([coords[chr] for chr in chromosomes], axis=1)
-      num_coords = coords.shape[1]
 
     else:
       # Convert starting coord dict into single array
-      coords = concatenate([start_coords[chr] for chr in chromosomes], axis=1)
-      num_coords = sum([len(seq_pos_dict[c]) for c in chromosomes])
+      coords = {}
+      for chr in chromosomes:
+        if start_coords[chr].shape[1] != len(seq_pos_dict[chr]):
+          coords[chr] = stack([getInterpolatedCoords(start_coords[chr][i], seq_pos_dict[chr],
+                                                     prev_seq_pos_dict[chr])
+                               for i in range(num_models)])
+        else:
+          coords[chr] = start_coords[chr]
 
-      if coords.shape[1] != num_coords: # Change of particle_size
-        interp_coords = empty((num_models, num_coords, 3))
-
-        for m in range(num_models): # Starting coords interpolated from previous particle positions
-          interp_coords[m] = getInterpolatedCoords(chromosomes, seq_pos_dict, prev_seq_pos_dict, coords[m])
-
-        coords = interp_coords
+    coords = concatenate([coords[chr] for chr in chromosomes], axis=1)
+    num_coords = coords.shape[1]
 
     # Equal unit masses and radii for all particles
     masses = ones(num_coords,  float)
