@@ -436,63 +436,63 @@ def anneal_genome(contact_dict, num_models, particle_size,
     return coords_dict, seq_pos_dict
 
 
+if __name__ == "__main__":
+    from time import time
 
-from time import time
+    # Number of alternative conformations to generate from repeat calculations
+    # with different random starting coordinates
+    num_models = 2
 
-# Number of alternative conformations to generate from repeat calculations
-# with different random starting coordinates
-num_models = 2
+    # Parameters to setup restraints and starting coords
+    general_calc_params = {'dist_power_law':-0.33,
+                          'contact_dist_lower':0.8, 'contact_dist_upper':1.2,
+                          'backbone_dist_lower':0.1, 'backbone_dist_upper':1.1,
+                          'random_seed':int(time()), 'random_radius':10.0}
 
-# Parameters to setup restraints and starting coords
-general_calc_params = {'dist_power_law':-0.33,
-                       'contact_dist_lower':0.8, 'contact_dist_upper':1.2,
-                       'backbone_dist_lower':0.1, 'backbone_dist_upper':1.1,
-                       'random_seed':int(time()), 'random_radius':10.0}
+    # Annealing & dyamics parameters: the same for all stages
+    # (this is cautious, but not an absolute requirement)
+    anneal_params = {'temp_start':5000.0, 'temp_end':10.0, 'temp_steps':500,
+                    'dynamics_steps':100, 'time_step':0.001}
 
-# Annealing & dyamics parameters: the same for all stages
-# (this is cautious, but not an absolute requirement)
-anneal_params = {'temp_start':5000.0, 'temp_end':10.0, 'temp_steps':500,
-                 'dynamics_steps':100, 'time_step':0.001}
+    # Hierarchical scale protocol
+    particle_sizes = [8e6, 4e6, 2e6, 4e5, 2e5, 1e5]
 
-# Hierarchical scale protocol
-particle_sizes = [8e6, 4e6, 2e6, 4e5, 2e5, 1e5]
+    # Load single-cell Hi-C data from NCC contact file, as output from NucProcess
+    contact_dict = load_ncc_file('example_chromo_data/P36D6.ncc')
 
-# Load single-cell Hi-C data from NCC contact file, as output from NucProcess
-contact_dict = load_ncc_file('example_chromo_data/P36D6.ncc')
+    # Only use contacts which are supported by others nearby in sequence, in the initial instance
+    remove_isolated_contacts(contact_dict, threshold=2e6)
 
-# Only use contacts which are supported by others nearby in sequence, in the initial instance
-remove_isolated_contacts(contact_dict, threshold=2e6)
+    # Initial coords will be random
+    start_coords = None
 
-# Initial coords will be random
-start_coords = None
+    # Record partile positions from previous stages
+    # so that coordinates can be interpolated to higher resolution
+    prev_seq_pos = None
 
-# Record partile positions from previous stages
-# so that coordinates can be interpolated to higher resolution
-prev_seq_pos = None
+    for stage, particle_size in enumerate(particle_sizes):
 
-for stage, particle_size in enumerate(particle_sizes):
+        print("Running structure caculation stage %d (%d kb)" % (stage+1, (particle_size/1e3)))
 
-    print("Running structure caculation stage %d (%d kb)" % (stage+1, (particle_size/1e3)))
+        # Can remove large violations (noise contacts inconsistent with structure)
+        # once we have a resonable resolution structure
+        if stage == 4:
+            remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos,
+                                    particle_size, threshold=6.0)
+        elif stage == 5:
+            remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos,
+                                    particle_size, threshold=5.0)
 
-    # Can remove large violations (noise contacts inconsistent with structure)
-    # once we have a resonable resolution structure
-    if stage == 4:
-        remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos,
-                                 particle_size, threshold=6.0)
-    elif stage == 5:
-        remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos,
-                                 particle_size, threshold=5.0)
+        coords_dict, particle_seq_pos = anneal_genome(contact_dict, num_models, particle_size,
+                                                      general_calc_params, anneal_params,
+                                                      prev_seq_pos, start_coords)
 
-    coords_dict, particle_seq_pos = anneal_genome(contact_dict, num_models, particle_size,
-                                                  general_calc_params, anneal_params,
-                                                  prev_seq_pos, start_coords)
+        # Next stage based on previous stage's 3D coords
+        # and thier respective seq. positions
+        start_coords = coords_dict
+        prev_seq_pos = particle_seq_pos
 
-    # Next stage based on previous stage's 3D coords
-    # and thier respective seq. positions
-    start_coords = coords_dict
-    prev_seq_pos = particle_seq_pos
-
-# Save final coords as PDB format file
-save_path = 'example_chromo_data/P36D6.pdb'
-export_pdb_coords(save_path, coords_dict, particle_seq_pos, particle_size)
-print('Saved structure file to: %s' % save_path)
+    # Save final coords as PDB format file
+    save_path = 'example_chromo_data/P36D6.pdb'
+    export_pdb_coords(save_path, coords_dict, particle_seq_pos, particle_size)
+    print('Saved structure file to: %s' % save_path)
