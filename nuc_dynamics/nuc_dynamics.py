@@ -456,6 +456,7 @@ def hierarchical_annealing(contacts, particle_sizes, **kwargs):
 def main(args=None):
     from argparse import ArgumentParser
     from sys import argv
+    from numpy import concatenate
 
     parser = ArgumentParser(description="Calculate a structure from a contact file.")
     parser.add_argument("contacts", type=Path, help="The .ncc file to load contacts from")
@@ -490,7 +491,10 @@ def main(args=None):
     contacts = load_ncc_file(str(args.contacts))
     contacts = remove_isolated_contacts(contacts, threshold=args.isolated_threshold)
 
+    # Load image coordinates, center and scale
     image_coords = {'CENPA': load_image_coords(args.CENPA)}
+    image_mean = concatenate(list(image_coords.values())).mean(axis=0)
+    image_coords = {k: (v - image_mean) * 10 for k, v in image_coords.items()}
 
     coords, seq_pos, restraints = hierarchical_annealing(
         contacts, args.particle_sizes,
