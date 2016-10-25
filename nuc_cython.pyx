@@ -4,11 +4,12 @@ import numpy, time
 
 BOLTZMANN_K = 0.0019872041
 
-cdef struct Restraint_t:
+cdef packed struct Restraint_t:
   int indices[2]
   double dists[2]
+  int ambiguity
 
-Restraint = dtype([('indices', 'int32', 2), ('dists', 'float64', 2)])
+Restraint = dtype([('indices', 'int32', 2), ('dists', 'float64', 2), ('ambiguity', 'int32')])
 
 #ctypedef int_t   int
 #ctypedef double_t double
@@ -577,7 +578,7 @@ def calc_restraints(contact_dict, pos_dict, int particle_size=10000,
 
   cdef int i, j, k, a, b, nc, n, na, nb
   cdef double dist
-  cdef ndarray[long, ndim=2] contacts      # Contact matrix (3:(posA, posB, nObs), nContacts)
+  cdef ndarray[long, ndim=2] contacts # Contact matrix (4:(posA, posB, nObs, ambigGrp), nContacts)
   cdef ndarray[Restraint_t, ndim=1] restraints  # Distance restraints (nRestraints,)
   cdef ndarray[int, ndim=2] bin_matrix     # Temp array for binned contacts
   cdef ndarray[int, ndim=1] seq_pos_a
@@ -645,6 +646,7 @@ def calc_restraints(contact_dict, pos_dict, int particle_size=10000,
             restraints[k].indices[1] = j # binB
             restraints[k].dists[0] = dist * lower # constraint lower bound
             restraints[k].dists[1] = dist * upper # constraint upper bound
+            restraints[k].ambiguity = 0 # Use '0' to represent no ambiguity
 
             k += 1
 
@@ -685,6 +687,7 @@ def concatenate_restraints(restraint_dict, pos_dict):
   # and the restraint distances for each
   cdef ndarray[int, ndim=2] particle_indices = numpy.empty((num_restraints, 2), numpy.int32)
   cdef ndarray[double, ndim=2] distances = numpy.empty((num_restraints, 2), float)
+  cdef ndarray[int, ndim=1] ambiguity_groups = numpy.empty(num_restraints, numpy.int32)
 
   m = 0
 
@@ -704,6 +707,30 @@ def concatenate_restraints(restraint_dict, pos_dict):
         distances[m,0] = restraints[i].dists[0] # lower
         distances[m,1] = restraints[i].dists[1] # upper
 
+        ambiguity_groups[m] = restraints[i].ambiguity
+
         m += 1
 
-  return particle_indices, distances
+  return particle_indices, distances, ambiguity_groups
+
+
+def calc_ambiguity_strides(ndarray[int, ndim=1] groups):
+  """
+  Convert (sorted) ambiguity groups to ambiguity strides suitable for
+  annealing calculations.
+  """
+  cdef int i = 0, count = 1, current_group = 0
+  cdef ndarray[int, ndim=1] strides = numpy.empty(len(groups), 'int32')
+
+  for i in range(len(groups)):
+    if groups[i] == current_group == 0:
+      strides[i] = 1
+    elif groups[i] == current_group:
+      count += 1
+    else:
+      strides[i-count:i] = count
+      current_group = groups[i]
+      count = 1
+  strides[i+1-count:i+1] = count
+
+  return strides

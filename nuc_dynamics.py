@@ -1,5 +1,5 @@
 from nuc_cython import (runDynamics, getSupportedPairs, calc_restraints, Restraint,
-                        concatenate_restraints, getInterpolatedCoords)
+                        concatenate_restraints, calc_ambiguity_strides, getInterpolatedCoords)
 
 def load_ncc_file(file_path):
   """Load chromosome and contact data from NCC format file, as output from NucProcess"""
@@ -317,6 +317,7 @@ def backbone_restraints(seq_pos, particle_size, lower=0.1, upper=1.1):
   # Normally 1.0 for regular sized particles
   bounds = array([lower, upper], dtype='float')
   restraints['dists'] = ((seq_pos[1:] - seq_pos[:-1]) / particle_size)[:, None] * bounds
+  restraints['ambiguity'] = 0 # Use '0' to represent no ambiguity
 
   return restraints
 
@@ -331,7 +332,7 @@ def anneal_genome(contact_dict, num_models, particle_size,
     resolution) stage.
     """
 
-    from numpy import int32, ones, empty, random, concatenate, stack
+    from numpy import int32, ones, empty, random, concatenate, stack, argsort
     from math import log, exp, atan, pi
     from functools import partial
     import gc
@@ -376,14 +377,15 @@ def anneal_genome(contact_dict, num_models, particle_size,
 
     # Concatenate chromosomal data into a single array of particle restraints
     # for structure calculation.
-    restraint_indices, restraint_dists = concatenate_restraints(restraint_dict, seq_pos_dict)
+    restraint_indices, restraint_dists, ambiguity_groups = concatenate_restraints(restraint_dict, seq_pos_dict)
     coords = concatenate([coords[chr] for chr in chromosomes], axis=1)
     masses = concatenate([masses[chr] for chr in chromosomes])
     radii = concatenate([radii[chr] for chr in chromosomes])
 
-    # Ambiguiity strides not used here, so set to 1
-    num_restraints = len(restraint_indices)
-    ambiguity = ones(num_restraints,  int32)
+    restraint_order = argsort(ambiguity_groups)
+    restraint_indices = restraint_indices[restraint_order]
+    restraint_dists = restraint_dists[restraint_order]
+    ambiguity = calc_ambiguity_strides(ambiguity_groups[restraint_order])
 
     # Below will be set to restrict memory allocation in the repusion list
     # (otherwise all vs all can be huge)
