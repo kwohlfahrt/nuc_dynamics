@@ -653,8 +653,7 @@ def calc_restraints(contact_dict, pos_dict, int particle_size=10000,
   return restraint_dict
 
 
-def concatenate_restraints(restraint_dict, pos_dict, particle_size,
-                           backbone_lower=0.1, backbone_upper=1.1):
+def concatenate_restraints(restraint_dict, pos_dict):
   """
   Joins restraints stored in a dict by chromo pairs into long concatenated arrays.
   Indices of restraints relate to concatenated chromo seq pos.
@@ -663,9 +662,6 @@ def concatenate_restraints(restraint_dict, pos_dict, particle_size,
 
   cdef int i, n, num_restraints, m
   cdef int start_a, start_b
-  cdef float bbl = numpy.float32(backbone_lower)
-  cdef float bbu = numpy.float32(backbone_upper)
-  cdef double dist, size = particle_size
 
   # Get total max number restraints and final restraint index offset for all chromos
   i = 0
@@ -675,7 +671,6 @@ def concatenate_restraints(restraint_dict, pos_dict, particle_size,
   for chr_a in sorted(pos_dict):
     n = len(pos_dict[chr_a])
     chromo_idx_offset[chr_a] = i
-    num_restraints += n-1 # One fewer because no link at end of chain
     i += n
 
   for chr_a in restraint_dict:
@@ -691,26 +686,7 @@ def concatenate_restraints(restraint_dict, pos_dict, particle_size,
   cdef ndarray[int, ndim=2] particle_indices = numpy.empty((num_restraints, 2), numpy.int32)
   cdef ndarray[double, ndim=2] distances = numpy.empty((num_restraints, 2), float)
 
-  # Add backbone path restraints
   m = 0
-  for chr_a in pos_dict:
-
-    positions = pos_dict[chr_a]
-    n = len(positions)
-    start_a = chromo_idx_offset[chr_a]
-
-    for i in range(n-1):
-
-      # Normally this is 1.0 for regular sized particles
-      dist = (positions[i+1]-positions[i])/size
-
-      particle_indices[m,0] = i + start_a
-      particle_indices[m,1] = i + start_a + 1
-
-      distances[m,0] = dist * bbl # lower
-      distances[m,1] = dist * bbu # upper
-
-      m += 1
 
   # Add regular restraints for chromo pairs
   for chr_a in restraint_dict:

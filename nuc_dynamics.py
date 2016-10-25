@@ -1,4 +1,4 @@
-from nuc_cython import (runDynamics, getSupportedPairs, calc_restraints,
+from nuc_cython import (runDynamics, getSupportedPairs, calc_restraints, Restraint,
                         concatenate_restraints, getInterpolatedCoords)
 
 def load_ncc_file(file_path):
@@ -307,6 +307,20 @@ def calc_bins(chromo_limits, particle_size):
   return bins
 
 
+def backbone_restraints(seq_pos, particle_size, lower=0.1, upper=1.1):
+  from numpy import empty, arange, array
+
+  restraints = empty(len(seq_pos) - 1, dtype=Restraint)
+  offsets = array([0, 1], dtype='int')
+  restraints['indices'] = arange(len(restraints))[:, None] + offsets
+
+  # Normally 1.0 for regular sized particles
+  bounds = array([lower, upper], dtype='float')
+  restraints['dists'] = ((seq_pos[1:] - seq_pos[:-1]) / particle_size)[:, None] * bounds
+
+  return restraints
+
+
 def anneal_genome(contact_dict, num_models, particle_size,
                   general_calc_params, anneal_params,
                   prev_seq_pos_dict=None, start_coords=None):
@@ -333,6 +347,12 @@ def anneal_genome(contact_dict, num_models, particle_size,
                                      lower=general_calc_params['contact_dist_lower'],
                                      upper=general_calc_params['contact_dist_upper'])
 
+    for chr in chromosomes:
+      backbone = backbone_restraints(seq_pos_dict[chr], particle_size,
+                                     general_calc_params['backbone_dist_lower'],
+                                     general_calc_params['backbone_dist_upper'])
+      restraint_dict[chr][chr] = concatenate([backbone, restraint_dict[chr][chr]])
+
     # Setup starting structure
     if (start_coords is None) or (prev_seq_pos_dict is None):
       coords = {chr: get_random_coords((num_models, len(seq_pos_dict[chr])),
@@ -355,10 +375,8 @@ def anneal_genome(contact_dict, num_models, particle_size,
     radii = {chr: ones(len(pos), float) for chr, pos in seq_pos_dict.items()}
 
     # Concatenate chromosomal data into a single array of particle restraints
-    # for structure calculation. Add backbone restraints between seq. adjasent particles.
-    restraint_indices, restraint_dists = concatenate_restraints(restraint_dict, seq_pos_dict, particle_size,
-                                                                general_calc_params['backbone_dist_lower'],
-                                                                general_calc_params['backbone_dist_upper'])
+    # for structure calculation.
+    restraint_indices, restraint_dists = concatenate_restraints(restraint_dict, seq_pos_dict)
     coords = concatenate([coords[chr] for chr in chromosomes], axis=1)
     masses = concatenate([masses[chr] for chr in chromosomes])
     radii = concatenate([radii[chr] for chr in chromosomes])
