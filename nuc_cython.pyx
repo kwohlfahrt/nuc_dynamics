@@ -1,8 +1,14 @@
 from libc.math cimport exp, abs, sqrt, ceil
-from numpy cimport ndarray, double_t, int_t
+from numpy cimport ndarray, double_t, int_t, dtype
 import numpy, time
 
 BOLTZMANN_K = 0.0019872041
+
+cdef struct Restraint_t:
+  int indices[2]
+  double dists[2]
+
+Restraint = dtype([('indices', 'int32', 2), ('dists', 'float64', 2)])
 
 #ctypedef int_t   int
 #ctypedef double_t double
@@ -572,7 +578,7 @@ def calc_restraints(contact_dict, pos_dict, int particle_size=10000,
   cdef int i, j, k, a, b, nc, n, na, nb
   cdef double dist
   cdef ndarray[long, ndim=2] contacts      # Contact matrix (3:(posA, posB, nObs), nContacts)
-  cdef ndarray[double, ndim=2] restraints  # Distance restraints (6:(), nRestraints)
+  cdef ndarray[Restraint_t, ndim=1] restraints  # Distance restraints (nRestraints,)
   cdef ndarray[int, ndim=2] bin_matrix     # Temp array for binned contacts
   cdef ndarray[int, ndim=1] seq_pos_a
   cdef ndarray[int, ndim=1] seq_pos_b
@@ -601,7 +607,7 @@ def calc_restraints(contact_dict, pos_dict, int particle_size=10000,
       contacts = contact_dict[chrA][chrB]
       n = len(contacts[0])
 
-      restraints = numpy.empty((6, n), float)
+      restraints = numpy.empty(n, Restraint)
       bin_matrix = numpy.zeros((na, nb), numpy.int32)
 
       for i in range(n):
@@ -635,16 +641,14 @@ def calc_restraints(contact_dict, pos_dict, int particle_size=10000,
 
             dist = scale * bin_matrix[i,j] ** exponent
 
-            restraints[0,k] = <double>i #binA
-            restraints[1,k] = <double>j #binB
-            restraints[2,k] = 1.0 # Weighting not currently used
-            restraints[3,k] = dist # target value
-            restraints[4,k] = dist * lower # constraint lower bound
-            restraints[5,k] = dist * upper # constraint upper bound
+            restraints[k].indices[0] = i # binA
+            restraints[k].indices[1] = j # binB
+            restraints[k].dists[0] = dist * lower # constraint lower bound
+            restraints[k].dists[1] = dist * upper # constraint upper bound
 
             k += 1
 
-      restraint_dict[chrA][chrB] = restraints[:,:k]
+      restraint_dict[chrA][chrB] = restraints[:k]
 
   return restraint_dict
 
@@ -676,11 +680,11 @@ def concatenate_restraints(restraint_dict, pos_dict, particle_size,
 
   for chr_a in restraint_dict:
     for chr_b in restraint_dict[chr_a]:
-      num_restraints += restraint_dict[chr_a][chr_b].shape[1]
+      num_restraints += len(restraint_dict[chr_a][chr_b])
 
   # Loop allocated arrays
   cdef ndarray[int, ndim=1] positions
-  cdef ndarray[double, ndim=2] restraints
+  cdef ndarray[Restraint_t, ndim=1] restraints
 
   # Final arrays which will hold identities of restrained particle pairs
   # and the restraint distances for each
@@ -716,14 +720,13 @@ def concatenate_restraints(restraint_dict, pos_dict, particle_size,
       start_b = chromo_idx_offset[chr_b] # Offset for chromo B particles
 
       restraints = restraint_dict[chr_a][chr_b]
-      n = restraints.shape[1]
 
-      for i in range(n):
-        particle_indices[m,0] = <int>restraints[0,i] + start_a
-        particle_indices[m,1] = <int>restraints[1,i] + start_b
+      for i in range(len(restraints)):
+        particle_indices[m,0] = restraints[i].indices[0] + start_a
+        particle_indices[m,1] = restraints[i].indices[1] + start_b
 
-        distances[m,0] = restraints[4,i] # lower
-        distances[m,1] = restraints[5,i] # upper
+        distances[m,0] = restraints[i].dists[0] # lower
+        distances[m,1] = restraints[i].dists[1] # upper
 
         m += 1
 
