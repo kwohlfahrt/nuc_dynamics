@@ -354,22 +354,16 @@ def anneal_genome(contact_dict, num_models, particle_size,
                                      general_calc_params['backbone_dist_upper'])
       restraint_dict[chr][chr] = concatenate([backbone, restraint_dict[chr][chr]])
 
-    # Setup starting structure
-    if (start_coords is None) or (prev_seq_pos_dict is None):
-      coords = {chr: get_random_coords((num_models, len(seq_pos_dict[chr])),
-                                       general_calc_params['random_radius'])
-                for chr in chromosomes}
-
-    else:
-      # Convert starting coord dict into single array
-      coords = {}
-      for chr in chromosomes:
-        if start_coords[chr].shape[1] != len(seq_pos_dict[chr]):
-          coords[chr] = stack([getInterpolatedCoords(start_coords[chr][i], seq_pos_dict[chr],
-                                                     prev_seq_pos_dict[chr])
-                               for i in range(num_models)])
-        else:
-          coords[chr] = start_coords[chr]
+    coords = start_coords or {}
+    for chr in chromosomes:
+      if chr not in coords:
+        coords[chr] = get_random_coords((num_models, len(seq_pos_dict[chr])),
+                                        general_calc_params['random_radius'])
+      elif coords[chr].shape[1] != len(seq_pos_dict[chr]):
+        coords[chr] = stack([getInterpolatedCoords(coords[chr][i],
+                                                   seq_pos_dict[chr],
+                                                   prev_seq_pos_dict[chr])
+                             for i in range(num_models)])
 
     # Equal unit masses and radii for all particles
     masses = {chr: ones(len(pos), float) for chr, pos in seq_pos_dict.items()}
