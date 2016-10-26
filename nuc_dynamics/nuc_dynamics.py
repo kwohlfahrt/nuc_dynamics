@@ -317,7 +317,8 @@ def calc_restraints(contact_dict, pos_dict,
   return dict(r)
 
 
-def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coords=None,
+def anneal_genome(contact_dict, image_contacts, particle_size,
+                  prev_seq_pos_dict=None, start_coords=None,
                   contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
                   temp_range=(5000.0, 10.0), temp_steps=500, dynamics_steps=100, time_step=0.001,
                   random_seed=None, random_radius=10.0, num_models=1):
@@ -328,9 +329,9 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
     resolution) stage.
     """
 
-    from numpy import (int32, ones, empty, random, concatenate, stack, argsort, geomspace,
-                       linspace, arctan, full)
-    from math import log, exp, pi
+    from numpy import (int32, ones, empty, random, concatenate, stack, argsort, arange,
+                       geomspace, linspace, arctan, full, zeros)
+    from math import log, exp, atan, pi
     from functools import partial
     import gc
 
@@ -341,6 +342,11 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
     particle_size = int32(particle_size)
     seq_pos_dict = calc_bins(calc_limits(contact_dict), particle_size)
     chromosomes = sorted(seq_pos_dict)
+
+    images = sorted(set.union(set(image_contacts), *map(set, image_contacts.values()))
+                    - set(chromosomes))
+    seq_pos_dict.update({img: arange(start_coords[img].shape[1]) for img in images})
+    points = sorted(chromosomes + images)
 
     # Calculate distance restrains from contact data
     restraint_dict = calc_restraints(contact_dict, seq_pos_dict, scale=bead_size,
@@ -369,8 +375,13 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
 
     # Equal unit masses and radii for all particles
     masses = {chr: ones(len(pos), float) for chr, pos in seq_pos_dict.items()}
+    masses.update({img: ones(coords[img].shape[1]) for img in image_contacts})
+
     radii = {chr: full(len(pos), bead_size, float)
              for chr, pos in seq_pos_dict.items()}
+    # No collisions, so radii don't matter
+    radii.update({img: zeros(coords[img].shape[1], dtype='float')
+                  for img in image_contacts})
     repDists = {chr: r * 0.75 for chr, r in radii.items()}
 
     # Concatenate chromosomal data into a single array of particle restraints
@@ -378,10 +389,10 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
     restraint_indices, restraint_dists, restraint_weights, ambiguity_groups = (
       concatenate_restraints(restraint_dict, seq_pos_dict)
     )
-    coords = concatenate([coords[chr] for chr in chromosomes], axis=1)
-    masses = concatenate([masses[chr] for chr in chromosomes])
-    radii = concatenate([radii[chr] for chr in chromosomes])
-    repDists = concatenate([repDists[chr] for chr in chromosomes])
+    coords = concatenate([coords[chr] for chr in points], axis=1)
+    masses = concatenate([masses[chr] for chr in points])
+    radii = concatenate([radii[chr] for chr in points])
+    repDists = concatenate([repDists[chr] for chr in points])
 
     restraint_order = argsort(ambiguity_groups)
     restraint_indices = restraint_indices[restraint_order]
@@ -415,14 +426,18 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
       model_coords -= model_coords.mean(axis=0)
 
     # Convert from single coord array to dict keyed by chromosome
-    coords_dict = unpack_chromo_coords(coords, chromosomes, seq_pos_dict)
+    coords_dict = unpack_chromo_coords(coords, points, seq_pos_dict)
 
     return coords_dict, seq_pos_dict, restraint_dict
 
 
-def hierarchical_annealing(contacts, particle_sizes, **kwargs):
-    # Initial coords will be random
-    start_coords = None
+def hierarchical_annealing(start_coords, contacts, image_contacts, particle_sizes,
+                           num_models=1, **kwargs):
+    from numpy import broadcast_to
+
+    # Unspecified coords will be random
+    start_coords = {k: broadcast_to(v, (num_models,) + v.shape)
+                    for k, v in start_coords.items()}
 
     # Record partile positions from previous stages
     # so that coordinates can be interpolated to higher resolution
@@ -442,7 +457,8 @@ def hierarchical_annealing(contacts, particle_sizes, **kwargs):
                                      particle_size, threshold=5.0)
 
         coords_dict, particle_seq_pos, restraint_dict = anneal_genome(
-          contacts, particle_size, prev_seq_pos, start_coords, **kwargs
+          contacts, image_contacts, particle_size, prev_seq_pos, start_coords,
+          num_models=num_models, **kwargs
         )
 
         # Next stage based on previous stage's 3D coords
@@ -456,7 +472,7 @@ def hierarchical_annealing(contacts, particle_sizes, **kwargs):
 def main(args=None):
     from argparse import ArgumentParser
     from sys import argv
-    from numpy import concatenate
+    from numpy import concatenate, array
 
     parser = ArgumentParser(description="Calculate a structure from a contact file.")
     parser.add_argument("contacts", type=Path, help="The .ncc file to load contacts from")
@@ -496,8 +512,16 @@ def main(args=None):
     image_mean = concatenate(list(image_coords.values())).mean(axis=0)
     image_coords = {k: (v - image_mean) * 10 for k, v in image_coords.items()}
 
+    chromosomes = set.union(set(contacts), *map(set, contacts.values()))
+    # Use -ive ambiguity groups to ensure no overlap with contact groups
+    image_contacts = {'CENPA': {
+      chr: array([[spot, 0, -(spot+1)] for spot in range(len(image_coords['CENPA']))]).T
+      for chr in chromosomes
+    }}
+
     coords, seq_pos, restraints = hierarchical_annealing(
-        contacts, args.particle_sizes,
+        image_coords, contacts, image_contacts,
+        args.particle_sizes,
         contact_dist=args.contact_dist, backbone_dist=args.backbone_dist,
         # Cautious annealing parameters
         # Don' need to be fixed, but are for simplicity
