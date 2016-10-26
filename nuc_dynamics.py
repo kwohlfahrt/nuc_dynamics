@@ -278,7 +278,8 @@ def unpack_chromo_coords(coords, chromosomes, seq_pos_dict):
   n_models, n_particles, dims = coords.shape
 
   if n_seq_pos != n_particles:
-    msg = 'Model coordinates must be an array of num models x %d' % (n_seq_pos,)
+    msg = ('Model coordinates must be an array of num models x %d, not %d' %
+           (n_seq_pos, n_particles))
     raise(Exception(msg))
 
   coords_dict = {}
