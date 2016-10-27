@@ -183,3 +183,14 @@ def test_remove_isolated_contacts():
         [500, 800, 0], [505, 795, 0], [809, 509, 0],
     ]).T}}
     np.testing.assert_equal(remove_isolated_contacts(contact_dict, 10, 2), expected)
+
+
+def test_merge_restraints():
+    from nuc_dynamics import merge_restraints
+
+    # Not correct dtype, but shouldn't matter
+    a = {'foo': {'bar': [0], 'foo': [1, 5]}}
+    b = {'foo': {'bar': [9, 10]}, 'baz': {'bar': [6]}}
+
+    merged = {'foo': {'bar': [0, 9, 10], 'foo': [1, 5]}, 'baz': {'bar': [6]}}
+    testing.assert_equal(merge_restraints(a, b), merged)

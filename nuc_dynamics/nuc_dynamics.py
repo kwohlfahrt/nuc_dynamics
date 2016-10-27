@@ -317,10 +317,31 @@ def calc_restraints(contact_dict, pos_dict,
   return dict(r)
 
 
+def merge_restraints(*restraints):
+  from functools import partial
+  from collections import defaultdict
+  from numpy import empty, concatenate
+
+  new = defaultdict(partial(defaultdict, list))
+  for restraint in restraints:
+    for a in restraint:
+      for b in restraint[a]:
+        new[a][b].append(restraint[a][b])
+
+  for a in new:
+    for b in new[a]:
+      new[a][b] = concatenate(new[a][b])
+    new[a] = dict(new[a])
+  new = dict(new)
+
+  return new
+
+
 def anneal_genome(contact_dict, image_contacts, particle_size,
                   prev_seq_pos_dict=None, start_coords=None,
                   contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
-                  temp_range=(5000.0, 10.0), temp_steps=500, dynamics_steps=100, time_step=0.001,
+                  image_weight=1.0, temp_range=(5000.0, 10.0), temp_steps=500,
+                  dynamics_steps=100, time_step=0.001,
                   random_seed=None, random_radius=10.0, num_models=1):
     """
     Use chromosome contact data to generate distance restraints and then
@@ -345,22 +366,35 @@ def anneal_genome(contact_dict, image_contacts, particle_size,
 
     images = sorted(set.union(set(image_contacts), *map(set, image_contacts.values()))
                     - set(chromosomes))
-    seq_pos_dict.update({img: arange(start_coords[img].shape[1]) for img in images})
+    seq_pos_dict.update({img: arange(start_coords[img].shape[1], dtype='int32') for img in images})
     points = sorted(chromosomes + images)
 
-    # Calculate distance restrains from contact data
-    restraint_dict = calc_restraints(contact_dict, seq_pos_dict, scale=bead_size,
-                                     lower=contact_dist[0], upper=contact_dist[1])
+    restraint_dict = merge_restraints(
+      # Contact restraints
+      calc_restraints(
+        contact_dict, seq_pos_dict, scale=bead_size,
+        lower=contact_dist[0], upper=contact_dist[1], weight=1.0
+      ),
+      # Image restraints
+      calc_restraints(
+        image_contacts, seq_pos_dict, scale=bead_size,
+        lower=contact_dist[0], upper=contact_dist[1], weight=image_weight,
+      )
+    )
 
     # Adjust to keep force/particle approximately constant
     dist = 215.0 * (sum(map(len, seq_pos_dict.values())) /
                     sum(map(lambda v: v['weight'].sum(),
                             flatten_dict(restraint_dict).values())))
 
-    for chr in chromosomes:
-      backbone = backbone_restraints(seq_pos_dict[chr], particle_size, bead_size,
-                                     backbone_dist[0], backbone_dist[1])
-      restraint_dict[chr][chr] = concatenate([backbone, restraint_dict[chr][chr]])
+    restraint_dict = merge_restraints(
+      restraint_dict,
+      # Backbone restraints
+      {chr: {chr: backbone_restraints(
+        seq_pos_dict[chr], particle_size, bead_size,
+        lower=backbone_dist[0], upper=backbone_dist[1], weight=1.0
+      )} for chr in chromosomes}
+    )
 
     coords = start_coords or {}
     for chr in chromosomes:
@@ -501,6 +535,8 @@ def main(args=None):
                         help="The random seed for starting coordinates")
     parser.add_argument("--random-radius", type=float, default=10,
                         help="The radius for random starting coordinates")
+    parser.add_argument("--image-weight", type=float, default=1.0,
+                        help="The weighting to use for image-based restraints")
 
     args = parser.parse_args(argv[1:] if args is None else args)
 
@@ -523,6 +559,7 @@ def main(args=None):
         image_coords, contacts, image_contacts,
         args.particle_sizes,
         contact_dist=args.contact_dist, backbone_dist=args.backbone_dist,
+        image_weight=args.image_weight,
         # Cautious annealing parameters
         # Don' need to be fixed, but are for simplicity
         temp_range=args.temp_range, temp_steps=args.temp_steps,

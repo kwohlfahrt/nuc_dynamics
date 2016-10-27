@@ -352,9 +352,6 @@ def runDynamics(ndarray[double, ndim=2] coords,
   if nRest != len(restLimits):
     raise NucCythonError('Number of restraint index pairs does not match number of restraint limits')
 
-  if len(restAmbig) != nRest + 1:
-    raise NucCythonError('Size of ambiguity list does not match number of restraints')
-
   cdef int i, j, n, step, nViol, nRep = 0
 
   cdef double d2, dx, dy, dz, ek, rmsd, tStep0, temp, fDist, fRep
