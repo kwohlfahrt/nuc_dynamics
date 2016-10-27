@@ -494,7 +494,7 @@ def runDynamics(ndarray[double, ndim=2] coords,
   if not nRepMax:
     nRepMax = nCoords*800
 
-  cdef double d2, maxDelta, dx, dy, dz, ek, rmsd, tStep0, temp, fDist, fRep
+  cdef double d2, dx, dy, dz, ek, rmsd, tStep0, temp, fDist, fRep
   cdef double deltaLim = 0.25 * repDist * repDist
   cdef double Langevin_gamma
 
@@ -522,26 +522,18 @@ def runDynamics(ndarray[double, ndim=2] coords,
       fDist = getRestraintForce(forces, coords, restIndices, restLimits, restAmbig, nRest, fConstD)
 
     else:
-      maxDelta = 0.0
       for i in range(nCoords):
         dx = coords[i,0] - coordsPrev[i,0]
         dy = coords[i,1] - coordsPrev[i,1]
         dz = coords[i,2] - coordsPrev[i,2]
-        d2 = dx*dx + dy*dy + dz*dz
+        if dx*dx + dy*dy + dz*dz > deltaLim:
+          nRep = getRepulsionList(repList, coords, nCoords, nRepMax, repDist, radii) # Handle errors
 
-        if d2 > maxDelta:
-          maxDelta = d2
-
-          if maxDelta > deltaLim:
-            break
-
-      if maxDelta > deltaLim:
-        nRep = getRepulsionList(repList, coords, nCoords, nRepMax, repDist, radii) # Handle errors
-
-        for i in range(nCoords):
-          coordsPrev[i,0] = coords[i,0]
-          coordsPrev[i,1] = coords[i,1]
-          coordsPrev[i,2] = coords[i,2]
+          for i in range(nCoords):
+            coordsPrev[i,0] = coords[i,0]
+            coordsPrev[i,1] = coords[i,1]
+            coordsPrev[i,2] = coords[i,2]
+          break # Already re-calculated, no need to check more
 
     updateMotion(masses, forces, accel, veloc, coords, nCoords, tRef, tStep0, beta)
 
