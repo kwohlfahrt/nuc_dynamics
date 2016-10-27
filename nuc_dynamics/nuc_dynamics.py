@@ -375,7 +375,7 @@ def anneal_genome(contact_dict, image_contacts, particle_size,
 
     # Equal unit masses and radii for all particles
     masses = {chr: ones(len(pos), float) for chr, pos in seq_pos_dict.items()}
-    masses.update({img: ones(coords[img].shape[1]) for img in image_contacts})
+    masses.update({img: full(coords[img].shape[1], float('inf')) for img in image_contacts})
 
     radii = {chr: full(len(pos), bead_size, float)
              for chr, pos in seq_pos_dict.items()}

@@ -1,5 +1,6 @@
 from libc.math cimport exp, abs, sqrt, ceil, pow
 from numpy cimport ndarray, double_t, int_t, dtype
+from numpy.math cimport INFINITY
 import numpy, time
 
 BOLTZMANN_K = 0.0019872041
@@ -67,6 +68,8 @@ cpdef double getTemp(ndarray[double, ndim=1] masses,
   cdef double kin = 0.0
 
   for i in range(nCoords):
+    if masses[i] == INFINITY:
+      continue
     kin += masses[i] * (veloc[i,0]*veloc[i,0] + veloc[i,1]*veloc[i,1] + veloc[i,2]*veloc[i,2])
 
   return kin / (3 * nCoords * BOLTZMANN_K)
@@ -363,6 +366,9 @@ def runDynamics(ndarray[double, ndim=2] coords,
 
   cdef ndarray[double, ndim=2] veloc = numpy.random.normal(0.0, 1.0, (nCoords, 3))
   veloc *= sqrt(tRef / getTemp(masses, veloc, nCoords))
+  for i, m in enumerate(masses):
+    if m == INFINITY:
+      veloc[i] = 0
 
   cdef ndarray[int, ndim=2] repList = numpy.empty((0, 2), numpy.int32)
   cdef ndarray[double, ndim=2] coordsPrev = numpy.array(coords)

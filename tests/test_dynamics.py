@@ -5,9 +5,10 @@ def test_get_temp():
 
     np.random.seed(4)
     masses = np.random.uniform(0.1, 1.0, size=20)
+    masses[2:4] = float('inf')
     veloc = np.random.uniform(-1.0, 1.0, size=(20, 3))
     values = getTemp(masses, veloc, len(masses))
-    expected = 76.49978143407098
+    expected = 65.77467716280236 # Using Tim's as reference
     assert values == expected
 
 
