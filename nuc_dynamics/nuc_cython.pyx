@@ -374,19 +374,52 @@ def runDynamics(ctx, cq,
     cq, repDists_buf, cl.map_flags.READ,
     0, nCoords, dtype('float64'), is_blocking=False
   )
+
+  cdef ndarray[int, ndim=2] repList = numpy.empty((0, 2), numpy.int32)
+
+  accel_buf = cl.Buffer(
+    ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+    nCoords * 3 * dtype('double').itemsize
+  )
+  forces_buf = cl.Buffer(
+    ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+    nCoords * 3 * dtype('double').itemsize
+  )
+  veloc_buf = cl.Buffer(
+    ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+    nCoords * 3 * dtype('double').itemsize
+  )
+
+  e = cl.enqueue_fill_buffer(
+    cq, accel_buf, numpy.zeros(1, dtype='float64'),
+    0, nCoords * 3 * dtype('float64').itemsize
+  )
+  (accel, _) = cl.enqueue_map_buffer(
+    cq, accel_buf, cl.map_flags.READ | cl.map_flags.WRITE,
+    0, (nCoords, 3), dtype('float64'), is_blocking=False, wait_for=[e]
+  )
+  e = cl.enqueue_fill_buffer(
+    cq, forces_buf, numpy.zeros(1, dtype='float64'),
+    0, nCoords * 3 * dtype('float64').itemsize
+  )
+  (forces, _) = cl.enqueue_map_buffer(
+    cq, forces_buf, cl.map_flags.READ | cl.map_flags.WRITE,
+    0, (nCoords, 3), dtype('float64'), is_blocking=False, wait_for=[e]
+  )
+  (veloc, _) = cl.enqueue_map_buffer(
+    cq, veloc_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
+    0, (nCoords, 3), dtype('float64'), is_blocking=False
+  )
   cl.wait_for_events([cl.enqueue_barrier(cq)])
 
   cdef ndarray[double, ndim=1] deltaLim = repDists * repDists
-  cdef ndarray[double, ndim=2] veloc = numpy.random.normal(0.0, 1.0, (nCoords, 3))
+  cdef ndarray[double, ndim=2] coordsPrev = numpy.array(coords)
+
+  veloc[...] = numpy.random.normal(0.0, 1.0, (nCoords, 3))
   veloc *= sqrt(tRef / getTemp(masses, veloc, nCoords))
   for i, m in enumerate(masses):
     if m == INFINITY:
       veloc[i] = 0
-
-  cdef ndarray[int, ndim=2] repList = numpy.empty((0, 2), numpy.int32)
-  cdef ndarray[double, ndim=2] coordsPrev = numpy.array(coords)
-  cdef ndarray[double, ndim=2] accel = numpy.zeros((nCoords, 3))
-  cdef ndarray[double, ndim=2] forces = numpy.zeros((nCoords, 3))
 
   cdef double t0 = time.time()
 
@@ -420,10 +453,15 @@ def runDynamics(ctx, cq,
 
     updateMotion(masses, forces, accel, veloc, coords, nCoords, tRef, tStep0, beta)
 
-    for i in range(nCoords):
-      forces[i,0] = 0.0
-      forces[i,1] = 0.0
-      forces[i,2] = 0.0
+    del forces
+    e = cl.enqueue_fill_buffer(
+      cq, forces_buf, numpy.zeros(1, dtype='float64'),
+      0, nCoords * 3 * dtype('float64').itemsize
+    )
+    (forces, _) = cl.enqueue_map_buffer(
+      cq, forces_buf, cl.map_flags.READ | cl.map_flags.WRITE,
+      0, (nCoords, 3), dtype('float64'), is_blocking=True, wait_for=[e]
+    )
 
     fRep  = getRepulsiveForce(repList, forces, coords, nRep, fConstR, radii)
     fDist = getRestraintForce(forces, coords, restIndices, restLimits,
