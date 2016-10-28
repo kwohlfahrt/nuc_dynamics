@@ -494,11 +494,16 @@ def anneal_genome(ctx, cq, contact_dict, images, particle_size,
     ambiguity = calc_ambiguity_offsets(restraints['ambiguity'])
 
     n_particles = sum(map(len, seq_pos_dict.values()))
+    model_coords_size = n_particles * 3 * dtype('float64').itemsize
 
     coords_buf = cl.Buffer(
       ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_ONLY,
       num_models * n_particles * 3 * dtype('float64').itemsize
     )
+    model_coords_bufs = [
+      coords_buf[i * model_coords_size : (i+1) * model_coords_size]
+      for i in range(num_models)
+    ]
     masses_buf = cl.Buffer(
       ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_ONLY,
       n_particles * dtype('float64').itemsize
@@ -535,6 +540,8 @@ def anneal_genome(ctx, cq, contact_dict, images, particle_size,
     concatenate_into([radii[chr] for chr in points], radii_map)
     concatenate_into([repDists[chr] for chr in points], repDists_map)
 
+    del coords_map, masses_map, radii_map, repDists_map
+
     # Setup annealig schedule: setup temps and repulsive terms
     temps = geomspace(temp_range[0], temp_range[1], temp_steps, endpoint=False)
     temps *= bead_size ** 2
@@ -544,19 +551,24 @@ def anneal_genome(ctx, cq, contact_dict, images, particle_size,
     # Update coordinates in the annealing schedule
     time_taken = 0.0
 
-    for model_coords in coords_map: # For each repeat calculation
+    for model_coords_buf in model_coords_bufs: # For each repeat calculation
       for temp, repulse in zip(temps, repulses):
         gc.collect() # Try to free some memory
 
         # Update coordinates for this temp
         dt = runDynamics(
-          ctx, cq, model_coords, masses_map, radii_map, repDists_map,
+          ctx, cq, model_coords_buf, masses_buf, radii_buf, repDists_buf, n_particles,
           restraints['indices'], restraints['dists'], restraints['weight'], ambiguity,
           temp, time_step, dynamics_steps, repulse, dist,
           printInterval=printInterval
         )
 
         time_taken += dt
+
+    (coords_map, _) = cl.enqueue_map_buffer(
+      cq, coords_buf, cl.map_flags.WRITE,
+      0, (num_models, n_particles, 3), dtype('float64'), is_blocking=True
+    )
 
     # Convert from single coord array to dict keyed by chromosome
     coords_dict = unpack_chromo_coords(coords_map, points, seq_pos_dict)

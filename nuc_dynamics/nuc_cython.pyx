@@ -1,7 +1,7 @@
 from libc.math cimport exp, abs, sqrt, ceil, pow
 from numpy cimport ndarray, double_t, int_t, dtype
 from numpy.math cimport INFINITY
-import numpy, time
+import numpy, time, pyopencl as cl
 
 BOLTZMANN_K = 0.0019872041
 
@@ -323,7 +323,8 @@ cpdef double getRestraintForce(ndarray[double, ndim=2] forces,
   return force
 
 
-def runDynamics(ctx, cq, coords, masses, radii, repDists,
+def runDynamics(ctx, cq,
+                coords_buf, masses_buf, radii_buf, repDists_buf, int nCoords,
                 ndarray[int, ndim=2] restIndices,
                 ndarray[double, ndim=2] restLimits,
                 ndarray[double, ndim=1] restWeight,
@@ -334,7 +335,6 @@ def runDynamics(ctx, cq, coords, masses, radii, repDists,
                 double tot0=20.458):
 
   cdef int nRest = len(restIndices)
-  cdef int nCoords = len(coords)
 
   if nCoords < 2:
     raise NucCythonError('Too few coodinates')
@@ -347,21 +347,36 @@ def runDynamics(ctx, cq, coords, masses, radii, repDists,
     data = (max(indices), nCoords)
     raise NucCythonError('Restraint index "%d" out of bounds (> %d)' % data)
 
-  if nCoords != len(masses):
-    raise NucCythonError('Masses list size does not match coordinates')
-
   if nRest != len(restLimits):
     raise NucCythonError('Number of restraint index pairs does not match number of restraint limits')
 
   cdef int i, j, n, step, nViol, nRep = 0
 
   cdef double d2, dx, dy, dz, ek, rmsd, tStep0, temp, fDist, fRep
-  cdef ndarray[double, ndim=1] deltaLim = repDists * repDists
   cdef double Langevin_gamma
 
   tStep0 = tStep * tot0
   beta /= tot0
 
+  (coords, _) = cl.enqueue_map_buffer(
+    cq, coords_buf, cl.map_flags.READ | cl.map_flags.WRITE,
+    0, (nCoords, 3), dtype('float64'), is_blocking=False
+  )
+  (masses, _) = cl.enqueue_map_buffer(
+    cq, masses_buf, cl.map_flags.READ,
+    0, nCoords, dtype('float64'), is_blocking=False
+  )
+  (radii, _) = cl.enqueue_map_buffer(
+    cq, radii_buf, cl.map_flags.READ,
+    0, nCoords, dtype('float64'), is_blocking=False
+  )
+  (repDists, _) = cl.enqueue_map_buffer(
+    cq, repDists_buf, cl.map_flags.READ,
+    0, nCoords, dtype('float64'), is_blocking=False
+  )
+  cl.wait_for_events([cl.enqueue_barrier(cq)])
+
+  cdef ndarray[double, ndim=1] deltaLim = repDists * repDists
   cdef ndarray[double, ndim=2] veloc = numpy.random.normal(0.0, 1.0, (nCoords, 3))
   veloc *= sqrt(tRef / getTemp(masses, veloc, nCoords))
   for i, m in enumerate(masses):
