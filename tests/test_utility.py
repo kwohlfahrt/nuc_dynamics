@@ -333,3 +333,11 @@ def test_concatenate_into():
     concatenate_into(data, out)
 
     testing.assert_array_equal(expected, out)
+
+
+def test_round_up():
+    from nuc_dynamics import roundUp
+
+    assert roundUp(3, 5) == 5
+    assert roundUp(3, 3) == 3
+    assert roundUp(3, 2) == 4

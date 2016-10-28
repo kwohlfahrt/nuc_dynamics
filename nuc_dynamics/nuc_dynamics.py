@@ -220,20 +220,11 @@ def unpack_chromo_coords(coords, chromosomes, seq_pos_dict):
   to get the correct array storage order.
   """
 
-  chromo_num_particles = [len(seq_pos_dict[chromo]) for chromo in chromosomes]
-  n_seq_pos = sum(chromo_num_particles)
-  n_models, n_particles, dims = coords.shape
-
-  if n_seq_pos != n_particles:
-    msg = ('Model coordinates must be an array of num models x %d, not %d' %
-           (n_seq_pos, n_particles))
-    raise(Exception(msg))
-
   coords_dict = {}
 
   j = 0
   for i, chromo in enumerate(chromosomes):
-    span = chromo_num_particles[i]
+    span = len(seq_pos_dict[chromo])
     coords_dict[chromo] = coords[:,j:j+span] # all models, slice
     j += span
 
@@ -404,6 +395,21 @@ def concatenate_into(data, out, axis=0):
   return out
 
 
+def roundUp(x, base=1):
+  return (x // base + bool(x % base)) * base
+
+
+def lcm(a, b):
+  """Lowest common multiple"""
+  try:
+    from math import gcd
+  except ImportError:
+    from fractions import gcd
+
+  # GCD is an integer for integer inputs
+  return abs(a * b) // gcd(a, b)
+
+
 def anneal_genome(ctx, cq, contact_dict, images, particle_size,
                   prev_seq_pos_dict=None, start_coords=None,
                   contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
@@ -494,15 +500,18 @@ def anneal_genome(ctx, cq, contact_dict, images, particle_size,
     ambiguity = calc_ambiguity_offsets(restraints['ambiguity'])
 
     n_particles = sum(map(len, seq_pos_dict.values()))
-    model_coords_size = n_particles * 3 * dtype('float64').itemsize
+    coord_size = dtype(('double', 3)).itemsize
+    model_buf_size = roundUp(
+      n_particles * coord_size, lcm(coord_size, cq.device.mem_base_addr_align)
+    )
+    coords_buf_shape = (num_models, model_buf_size // coord_size, 3)
 
     coords_buf = cl.Buffer(
       ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_ONLY,
-      num_models * n_particles * 3 * dtype('float64').itemsize
+      num_models * model_buf_size
     )
     model_coords_bufs = [
-      coords_buf[i * model_coords_size : (i+1) * model_coords_size]
-      for i in range(num_models)
+      coords_buf[i * model_buf_size : (i+1) * model_buf_size] for i in range(num_models)
     ]
     masses_buf = cl.Buffer(
       ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_ONLY,
@@ -519,7 +528,7 @@ def anneal_genome(ctx, cq, contact_dict, images, particle_size,
 
     (coords_map, _) = cl.enqueue_map_buffer(
       cq, coords_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
-      0, (num_models, n_particles, 3), dtype('float64'), is_blocking=False
+      0, coords_buf_shape, dtype('float64'), is_blocking=False
     )
     (masses_map, _) = cl.enqueue_map_buffer(
       cq, masses_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
@@ -567,7 +576,7 @@ def anneal_genome(ctx, cq, contact_dict, images, particle_size,
 
     (coords_map, _) = cl.enqueue_map_buffer(
       cq, coords_buf, cl.map_flags.WRITE,
-      0, (num_models, n_particles, 3), dtype('float64'), is_blocking=True
+      0, coords_buf_shape, dtype('float64'), is_blocking=True
     )
 
     # Convert from single coord array to dict keyed by chromosome
