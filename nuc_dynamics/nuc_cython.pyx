@@ -323,10 +323,7 @@ cpdef double getRestraintForce(ndarray[double, ndim=2] forces,
   return force
 
 
-def runDynamics(ndarray[double, ndim=2] coords,
-                ndarray[double, ndim=1] masses,
-                ndarray[double, ndim=1] radii,
-                ndarray[double, ndim=1] repDists,
+def runDynamics(ctx, cq, coords, masses, radii, repDists,
                 ndarray[int, ndim=2] restIndices,
                 ndarray[double, ndim=2] restLimits,
                 ndarray[double, ndim=1] restWeight,

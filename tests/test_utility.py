@@ -50,6 +50,7 @@ def test_ambiguity_offsets_short():
     offsets = np.array([0], dtype='int32')
     testing.assert_array_equal(calc_ambiguity_offsets(groups), offsets)
 
+
 def test_flatten_dict():
     from nuc_dynamics import flatten_dict
 
@@ -320,3 +321,15 @@ def test_merge_contacts():
                              (( 4, 49), 1),], dtype=Contact)},
     }
     np.testing.assert_equal(merge_dicts(*contacts), expected)
+
+
+def test_concatenate_into():
+    from nuc_dynamics import concatenate_into
+
+    data = [np.arange(10).reshape(2, 5), np.arange(20).reshape(4, 5)]
+    expected = np.concatenate(data)
+
+    out = np.empty_like(expected)
+    concatenate_into(data, out)
+
+    testing.assert_array_equal(expected, out)

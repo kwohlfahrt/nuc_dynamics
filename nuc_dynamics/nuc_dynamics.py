@@ -391,7 +391,20 @@ def merge_dicts(*dicts):
   return unflatten_dict(new)
 
 
-def anneal_genome(contact_dict, images, particle_size,
+def concatenate_into(data, out, axis=0):
+  from itertools import accumulate
+
+  sizes = [d.shape[axis] for d in data]
+  offsets = list(accumulate([0] + sizes))
+
+  for offset, size, d in zip(offsets, sizes, data):
+    indices = [slice(None)] * out.ndim
+    indices[axis] = slice(offset, offset + size)
+    out[tuple(indices)] = d
+  return out
+
+
+def anneal_genome(ctx, cq, contact_dict, images, particle_size,
                   prev_seq_pos_dict=None, start_coords=None,
                   contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
                   image_weight=1.0, temp_range=(5000.0, 10.0), temp_steps=500,
@@ -406,10 +419,11 @@ def anneal_genome(contact_dict, images, particle_size,
     """
 
     from numpy import (int32, ones, empty, random, concatenate, stack, argsort, arange,
-                       geomspace, linspace, arctan, full, zeros)
+                       geomspace, linspace, arctan, full, zeros, dtype)
     from math import log, exp, atan, pi
     from functools import partial
     import gc
+    import pyopencl as cl
 
     bead_size = particle_size ** (1/3)
 
@@ -475,14 +489,51 @@ def anneal_genome(contact_dict, images, particle_size,
     # Concatenate chromosomal data into a single array of particle restraints
     # for structure calculation.
     restraints = bin_restraints(concatenate_restraints(restraint_dict, seq_pos_dict))
-    coords = concatenate([coords[chr] for chr in points], axis=1)
-    masses = concatenate([masses[chr] for chr in points])
-    radii = concatenate([radii[chr] for chr in points])
-    repDists = concatenate([repDists[chr] for chr in points])
-
     restraint_order = argsort(restraints['ambiguity'])
     restraints = restraints[restraint_order]
     ambiguity = calc_ambiguity_offsets(restraints['ambiguity'])
+
+    n_particles = sum(map(len, seq_pos_dict.values()))
+
+    coords_buf = cl.Buffer(
+      ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_ONLY,
+      num_models * n_particles * 3 * dtype('float64').itemsize
+    )
+    masses_buf = cl.Buffer(
+      ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_ONLY,
+      n_particles * dtype('float64').itemsize
+    )
+    radii_buf = cl.Buffer(
+      ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_ONLY,
+      num_models * n_particles * dtype('float64').itemsize
+    )
+    repDists_buf = cl.Buffer(
+      ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_ONLY,
+      num_models * n_particles * dtype('float64').itemsize
+    )
+
+    (coords_map, _) = cl.enqueue_map_buffer(
+      cq, coords_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
+      0, (num_models, n_particles, 3), dtype('float64'), is_blocking=False
+    )
+    (masses_map, _) = cl.enqueue_map_buffer(
+      cq, masses_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
+      0, n_particles, dtype('float64'), is_blocking=False
+    )
+    (radii_map, _) = cl.enqueue_map_buffer(
+      cq, radii_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
+      0, n_particles, dtype('float64'), is_blocking=False
+    )
+    (repDists_map, _) = cl.enqueue_map_buffer(
+      cq, repDists_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
+      0, n_particles, dtype('float64'), is_blocking=False
+    )
+    cl.wait_for_events([cl.enqueue_barrier(cq)])
+
+    concatenate_into([coords[chr] for chr in points], coords_map, axis=1)
+    concatenate_into([masses[chr] for chr in points], masses_map)
+    concatenate_into([radii[chr] for chr in points], radii_map)
+    concatenate_into([repDists[chr] for chr in points], repDists_map)
 
     # Setup annealig schedule: setup temps and repulsive terms
     temps = geomspace(temp_range[0], temp_range[1], temp_steps, endpoint=False)
@@ -493,13 +544,13 @@ def anneal_genome(contact_dict, images, particle_size,
     # Update coordinates in the annealing schedule
     time_taken = 0.0
 
-    for model_coords in coords: # For each repeat calculation
+    for model_coords in coords_map: # For each repeat calculation
       for temp, repulse in zip(temps, repulses):
         gc.collect() # Try to free some memory
 
         # Update coordinates for this temp
         dt = runDynamics(
-          model_coords, masses, radii, repDists,
+          ctx, cq, model_coords, masses_map, radii_map, repDists_map,
           restraints['indices'], restraints['dists'], restraints['weight'], ambiguity,
           temp, time_step, dynamics_steps, repulse, dist,
           printInterval=printInterval
@@ -508,12 +559,12 @@ def anneal_genome(contact_dict, images, particle_size,
         time_taken += dt
 
     # Convert from single coord array to dict keyed by chromosome
-    coords_dict = unpack_chromo_coords(coords, points, seq_pos_dict)
+    coords_dict = unpack_chromo_coords(coords_map, points, seq_pos_dict)
 
     return coords_dict, seq_pos_dict, restraint_dict
 
 
-def hierarchical_annealing(start_coords, contacts, images,
+def hierarchical_annealing(ctx, cq, start_coords, contacts, images,
                            particle_sizes, num_models=1, **kwargs):
     from numpy import broadcast_to
 
@@ -541,7 +592,7 @@ def hierarchical_annealing(start_coords, contacts, images,
             )
 
         coords_dict, particle_seq_pos, restraint_dict = anneal_genome(
-            contacts, images, particle_size,
+            ctx, cq, contacts, images, particle_size,
             prev_seq_pos, start_coords, num_models=num_models, **kwargs
         )
 
@@ -557,6 +608,11 @@ def main(args=None):
     from argparse import ArgumentParser
     from sys import argv
     from numpy import concatenate, array
+
+    import pyopencl as cl
+
+    ctx = cl.create_some_context()
+    cq = cl.CommandQueue(ctx)
 
     parser = ArgumentParser(description="Calculate a structure from a contact file.")
     parser.add_argument("contacts", type=Path, nargs='+',
@@ -609,7 +665,7 @@ def main(args=None):
     )
 
     coords, seq_pos, restraints = hierarchical_annealing(
-        image_coords, contacts, set(image_coords.keys()),
+        ctx, cq, image_coords, contacts, set(image_coords.keys()),
         args.particle_sizes,
         contact_dist=args.contact_dist, backbone_dist=args.backbone_dist,
         image_weight=args.image_weight,
