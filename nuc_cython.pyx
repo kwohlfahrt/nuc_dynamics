@@ -501,23 +501,22 @@ def runDynamics(ndarray[double, ndim=2] coords,
   tStep0 = tStep * tot0
   beta /= tot0
 
-  veloc = numpy.random.normal(0.0, 1.0, (nCoords, 3))
+  cdef ndarray[double, ndim=2] veloc = numpy.random.normal(0.0, 1.0, (nCoords, 3))
   veloc *= sqrt(tRef / getTemp(masses, veloc, nCoords))
 
-  repList = numpy.zeros((nRepMax, 2), numpy.int32)
+  cdef ndarray[int, ndim=2] repList = numpy.zeros((nRepMax, 2), numpy.int32)
 
   cdef ndarray[double, ndim=2] coordsPrev = numpy.array(coords)
   cdef ndarray[double, ndim=2] accel = numpy.zeros((nCoords, 3))
-  cdef ndarray[double, ndim=2] forces
+  cdef ndarray[double, ndim=2] forces = numpy.zeros((nCoords, 3))
 
-  t0 = time.time()
+  cdef double t0 = time.time()
 
   for step in range(nSteps):
 
     if step == 0:
       nRep = getRepulsionList(repList, coords, nCoords, nRepMax, repDist, radii) # Handle errors
 
-      forces = numpy.zeros((nCoords, 3))
       fRep = getRepulsiveForce(repList, forces, coords, nRep,  fConstR, radii)
       fDist = getRestraintForce(forces, coords, restIndices, restLimits, restAmbig, nRest, fConstD)
 
