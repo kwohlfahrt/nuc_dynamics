@@ -415,9 +415,7 @@ def anneal_genome(contact_dict, num_models, particle_size,
     # Update coordinates in the annealing schedule
     time_taken = 0.0
 
-    for m in range(num_models): # For each repeat calculation
-      model_coords = coords[m]
-
+    for model_coords in coords: # For each repeat calculation
       for temp, repulse in anneal_schedule:
         gc.collect() # Try to free some memory
 
@@ -430,9 +428,6 @@ def anneal_genome(contact_dict, num_models, particle_size,
 
       # Center
       model_coords -= model_coords.mean(axis=0)
-
-      # Update
-      coords[m] = model_coords
 
     # Convert from single coord array to dict keyed by chromosome
     coords_dict = unpack_chromo_coords(coords, chromosomes, seq_pos_dict)
