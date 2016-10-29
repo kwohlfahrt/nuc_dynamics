@@ -410,7 +410,7 @@ def lcm(a, b):
   return abs(a * b) // gcd(a, b)
 
 
-def anneal_genome(ctx, cq, contact_dict, images, particle_size,
+def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
                   prev_seq_pos_dict=None, start_coords=None,
                   contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
                   image_weight=1.0, temp_range=(5000.0, 10.0), temp_steps=500,
@@ -514,12 +514,10 @@ def anneal_genome(ctx, cq, contact_dict, images, particle_size,
       coords_buf[i * model_buf_size : (i+1) * model_buf_size] for i in range(num_models)
     ]
     masses_buf = cl.Buffer(
-      ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_ONLY,
-      n_particles * dtype('float64').itemsize
+      ctx, cl.mem_flags.READ_ONLY, n_particles * dtype('float64').itemsize
     )
     radii_buf = cl.Buffer(
-      ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_ONLY,
-      num_models * n_particles * dtype('float64').itemsize
+      ctx, cl.mem_flags.READ_ONLY, num_models * n_particles * dtype('float64').itemsize
     )
     repDists_buf = cl.Buffer(
       ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_ONLY,
@@ -566,7 +564,8 @@ def anneal_genome(ctx, cq, contact_dict, images, particle_size,
 
         # Update coordinates for this temp
         dt = runDynamics(
-          ctx, cq, model_coords_buf, masses_buf, radii_buf, repDists_buf, n_particles,
+          ctx, cq, kernels,
+          model_coords_buf, masses_buf, radii_buf, repDists_buf, n_particles,
           restraints['indices'], restraints['dists'], restraints['weight'], ambiguity,
           temp, time_step, dynamics_steps, repulse, dist,
           printInterval=printInterval
@@ -585,7 +584,7 @@ def anneal_genome(ctx, cq, contact_dict, images, particle_size,
     return coords_dict, seq_pos_dict, restraint_dict
 
 
-def hierarchical_annealing(ctx, cq, start_coords, contacts, images,
+def hierarchical_annealing(ctx, cq, kernels, start_coords, contacts, images,
                            particle_sizes, num_models=1, **kwargs):
     from numpy import broadcast_to
 
@@ -613,7 +612,7 @@ def hierarchical_annealing(ctx, cq, start_coords, contacts, images,
             )
 
         coords_dict, particle_seq_pos, restraint_dict = anneal_genome(
-            ctx, cq, contacts, images, particle_size,
+            ctx, cq, kernels, contacts, images, particle_size,
             prev_seq_pos, start_coords, num_models=num_models, **kwargs
         )
 
@@ -629,11 +628,19 @@ def main(args=None):
     from argparse import ArgumentParser
     from sys import argv
     from numpy import concatenate, array
+    import numpy as np
 
     import pyopencl as cl
 
     ctx = cl.create_some_context()
     cq = cl.CommandQueue(ctx)
+    with (Path(__file__).parent / "kernels.cl").open() as f:
+      program = cl.Program(ctx, f.read()).build()
+      kernels = ['updateVelocity']
+      kernels = {name: getattr(program, name) for name in kernels}
+      kernels['updateVelocity'].set_scalar_arg_dtypes(
+        [None, None, None, None, np.float64, np.float64]
+      )
 
     parser = ArgumentParser(description="Calculate a structure from a contact file.")
     parser.add_argument("contacts", type=Path, nargs='+',
@@ -686,7 +693,7 @@ def main(args=None):
     )
 
     coords, seq_pos, restraints = hierarchical_annealing(
-        ctx, cq, image_coords, contacts, set(image_coords.keys()),
+        ctx, cq, kernels, image_coords, contacts, set(image_coords.keys()),
         args.particle_sizes,
         contact_dist=args.contact_dist, backbone_dist=args.backbone_dist,
         image_weight=args.image_weight,

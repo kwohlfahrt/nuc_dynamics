@@ -150,27 +150,6 @@ cdef void updateMotion(ndarray[double, ndim=1] masses,
     veloc[i,2] += tStep * accel[i,2]
 
 
-cdef void updateVelocity(ndarray[double, ndim=1] masses,
-                         ndarray[double, ndim=2] forces,
-                         ndarray[double, ndim=2] accel,
-                         ndarray[double, ndim=2] veloc,
-                         int nCoords, double tRef,
-                         double tStep, double beta):
-
-  cdef int i
-  cdef double r, temp
-
-  temp = getTemp(masses, veloc, nCoords)
-  #avoid division by 0 temperature
-  temp = max(temp, 0.001)
-  r = beta * (tRef/temp-1.0)
-
-  for i in range(nCoords):
-    veloc[i,0] += 0.5 * tStep * (forces[i,0] / masses[i] + r * veloc[i,0] - accel[i,0])
-    veloc[i,1] += 0.5 * tStep * (forces[i,1] / masses[i] + r * veloc[i,1] - accel[i,1])
-    veloc[i,2] += 0.5 * tStep * (forces[i,2] / masses[i] + r * veloc[i,2] - accel[i,2])
-
-
 cdef double getRepulsiveForce(ndarray[int,   ndim=2] repList,
                               ndarray[double, ndim=2] forces,
                               ndarray[double, ndim=2] coords,
@@ -323,7 +302,7 @@ cpdef double getRestraintForce(ndarray[double, ndim=2] forces,
   return force
 
 
-def runDynamics(ctx, cq,
+def runDynamics(ctx, cq, kernels,
                 coords_buf, masses_buf, radii_buf, repDists_buf, int nCoords,
                 ndarray[int, ndim=2] restIndices,
                 ndarray[double, ndim=2] restLimits,
@@ -422,6 +401,7 @@ def runDynamics(ctx, cq,
       veloc[i] = 0
 
   cdef double t0 = time.time()
+  cdef double r # for use as kernel parameter
 
   nRep = getRepulsionList(repList, coords, repDists, radii, masses)
   # Allocate with some padding
@@ -467,7 +447,27 @@ def runDynamics(ctx, cq,
     fDist = getRestraintForce(forces, coords, restIndices, restLimits,
                               restWeight, restAmbig, fConstD)
 
-    updateVelocity(masses, forces, accel, veloc, nCoords, tRef, tStep0,  beta)
+    r = beta * (tRef / max(getTemp(masses, veloc, nCoords), 0.001) - 1.0)
+    del veloc, forces, accel
+
+    e = kernels['updateVelocity'](
+      cq, (nCoords,), None,
+      veloc_buf, masses_buf, forces_buf, accel_buf, tStep0, r,
+    )
+
+    (accel, _) = cl.enqueue_map_buffer(
+      cq, accel_buf, cl.map_flags.READ | cl.map_flags.WRITE,
+      0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
+    )
+    (forces, _) = cl.enqueue_map_buffer(
+      cq, forces_buf, cl.map_flags.READ | cl.map_flags.WRITE,
+      0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
+    )
+    (veloc, _) = cl.enqueue_map_buffer(
+      cq, veloc_buf, cl.map_flags.READ | cl.map_flags.WRITE,
+      0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
+    )
+    cl.wait_for_events([cl.enqueue_barrier(cq)])
 
     if (printInterval > 0) and step % printInterval == 0:
       temp = getTemp(masses, veloc, nCoords)
