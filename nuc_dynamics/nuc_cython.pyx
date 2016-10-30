@@ -119,37 +119,6 @@ def getStats(ndarray[int,   ndim=2] restIndices,
   return nViol, sqrt(s/nRest)
 
 
-cdef void updateMotion(ndarray[double, ndim=1] masses,
-                       ndarray[double, ndim=2] forces,
-                       ndarray[double, ndim=2] accel,
-                       ndarray[double, ndim=2] veloc,
-                       ndarray[double, ndim=2] coords,
-                       int nCoords, double tRef,
-                       double tStep, double beta):
-
-  cdef int i
-  cdef double r, rtStep, temp
-
-  rtStep = 0.5 * tStep * tStep
-  temp = getTemp(masses, veloc, nCoords)
-  temp = max(temp, 0.001)
-  r = beta * (tRef/temp-1.0)
-
-  for i in range(nCoords):
-
-    accel[i,0] = forces[i,0] / masses[i] + r * veloc[i,0]
-    accel[i,1] = forces[i,1] / masses[i] + r * veloc[i,1]
-    accel[i,2] = forces[i,2] / masses[i] + r * veloc[i,2]
-
-    coords[i,0] += tStep * veloc[i,0] + rtStep * accel[i,0]
-    coords[i,1] += tStep * veloc[i,1] + rtStep * accel[i,1]
-    coords[i,2] += tStep * veloc[i,2] + rtStep * accel[i,2]
-
-    veloc[i,0] += tStep * accel[i,0]
-    veloc[i,1] += tStep * accel[i,1]
-    veloc[i,2] += tStep * accel[i,2]
-
-
 cdef double getRepulsiveForce(ndarray[int,   ndim=2] repList,
                               ndarray[double, ndim=2] forces,
                               ndarray[double, ndim=2] coords,
@@ -338,7 +307,7 @@ def runDynamics(ctx, cq, kernels,
   beta /= tot0
 
   (coords, _) = cl.enqueue_map_buffer(
-    cq, coords_buf, cl.map_flags.READ | cl.map_flags.WRITE,
+    cq, coords_buf, cl.map_flags.READ,
     0, (nCoords, 3), dtype('float64'), is_blocking=False
   )
   (masses, _) = cl.enqueue_map_buffer(
@@ -357,7 +326,7 @@ def runDynamics(ctx, cq, kernels,
   cdef ndarray[int, ndim=2] repList = numpy.empty((0, 2), numpy.int32)
 
   accel_buf = cl.Buffer(
-    ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+    ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_WRITE,
     nCoords * 3 * dtype('double').itemsize
   )
   forces_buf = cl.Buffer(
@@ -365,17 +334,13 @@ def runDynamics(ctx, cq, kernels,
     nCoords * 3 * dtype('double').itemsize
   )
   veloc_buf = cl.Buffer(
-    ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+    ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_WRITE,
     nCoords * 3 * dtype('double').itemsize
   )
 
-  e = cl.enqueue_fill_buffer(
+  cl.enqueue_fill_buffer(
     cq, accel_buf, numpy.zeros(1, dtype='float64'),
     0, nCoords * 3 * dtype('float64').itemsize
-  )
-  (accel, _) = cl.enqueue_map_buffer(
-    cq, accel_buf, cl.map_flags.READ | cl.map_flags.WRITE,
-    0, (nCoords, 3), dtype('float64'), is_blocking=False, wait_for=[e]
   )
   e = cl.enqueue_fill_buffer(
     cq, forces_buf, numpy.zeros(1, dtype='float64'),
@@ -431,40 +396,50 @@ def runDynamics(ctx, cq, kernels,
           coordsPrev[i,2] = coords[i,2]
         break # Already re-calculated, no need to check more
 
-    updateMotion(masses, forces, accel, veloc, coords, nCoords, tRef, tStep0, beta)
+    r = beta * (tRef / max(getTemp(masses, veloc, nCoords), 0.001) - 1.0)
+    del coords, veloc, forces
 
-    del forces
+    e = kernels['updateMotion'](
+      cq, (nCoords,), None,
+      coords_buf, veloc_buf, accel_buf, masses_buf, forces_buf, tStep0, r,
+    )
+
+    (coords, _) = cl.enqueue_map_buffer(
+      cq, coords_buf, cl.map_flags.READ,
+      0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
+    )
+    (veloc, _) = cl.enqueue_map_buffer(
+      cq, veloc_buf, cl.map_flags.READ,
+      0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
+    )
     e = cl.enqueue_fill_buffer(
       cq, forces_buf, numpy.zeros(1, dtype='float64'),
-      0, nCoords * 3 * dtype('float64').itemsize
+      0, nCoords * 3 * dtype('float64').itemsize, wait_for=[e]
     )
     (forces, _) = cl.enqueue_map_buffer(
       cq, forces_buf, cl.map_flags.READ | cl.map_flags.WRITE,
-      0, (nCoords, 3), dtype('float64'), is_blocking=True, wait_for=[e]
+      0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
     )
+    cl.wait_for_events([cl.enqueue_barrier(cq)])
 
     fRep  = getRepulsiveForce(repList, forces, coords, nRep, fConstR, radii)
     fDist = getRestraintForce(forces, coords, restIndices, restLimits,
                               restWeight, restAmbig, fConstD)
 
     r = beta * (tRef / max(getTemp(masses, veloc, nCoords), 0.001) - 1.0)
-    del veloc, forces, accel
+    del veloc, forces
 
     e = kernels['updateVelocity'](
       cq, (nCoords,), None,
       veloc_buf, masses_buf, forces_buf, accel_buf, tStep0, r,
     )
 
-    (accel, _) = cl.enqueue_map_buffer(
-      cq, accel_buf, cl.map_flags.READ | cl.map_flags.WRITE,
-      0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
-    )
     (forces, _) = cl.enqueue_map_buffer(
       cq, forces_buf, cl.map_flags.READ | cl.map_flags.WRITE,
       0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
     )
     (veloc, _) = cl.enqueue_map_buffer(
-      cq, veloc_buf, cl.map_flags.READ | cl.map_flags.WRITE,
+      cq, veloc_buf, cl.map_flags.READ,
       0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
     )
     cl.wait_for_events([cl.enqueue_barrier(cq)])
