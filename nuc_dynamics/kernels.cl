@@ -3,7 +3,7 @@ kernel void updateVelocity(global double * const veloc,
                            global const double * const forces,
                            global const double * const accel,
                            const double tStep, const double r) {
-    size_t i = get_global_id(0);
+    const size_t i = get_global_id(0);
 
     const double3 old = vload3(i, veloc);
     const double3 new =
@@ -17,7 +17,7 @@ kernel void updateMotion(global double * const coords,
                          global const double * const masses,
                          global const double * const forces,
                          const double tStep, const double r) {
-    size_t i = get_global_id(0);
+    const size_t i = get_global_id(0);
 
     const double3 old_veloc = vload3(i, veloc);
     const double3 old_coords = vload3(i, coords);
@@ -54,12 +54,12 @@ kernel void getRepulsiveForce(global const int * const repList,
                               global const double * const coords,
                               global const double * const radii,
                               const double fConst) {
-    size_t i = get_global_id(0);
+    const size_t i = get_global_id(0);
 
-    int j = repList[i*2+0];
-    int k = repList[i*2+1];
-    double repDist = radii[j] + radii[k];
-    double repDist2 = repDist * repDist;
+    const int j = repList[i*2+0];
+    const int k = repList[i*2+1];
+    const double repDist = radii[j] + radii[k];
+    const double repDist2 = repDist * repDist;
 
     const double3 dist = vload3(k, coords) - vload3(j, coords);
     if (any(fabs(dist) > repDist))
