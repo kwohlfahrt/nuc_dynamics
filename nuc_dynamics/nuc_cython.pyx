@@ -21,7 +21,8 @@ class NucCythonError(Exception):
 cdef int getRepulsionList(ndarray[int,   ndim=2] repList,
                           ndarray[double, ndim=2] coords,
                           ndarray[double, ndim=1] repDists,
-                          ndarray[double, ndim=1] radii):
+                          ndarray[double, ndim=1] radii,
+                          ndarray[double, ndim=1] masses):
 
   cdef int i, j
   cdef int n = 0
@@ -30,7 +31,13 @@ cdef int getRepulsionList(ndarray[int,   ndim=2] repList,
   cdef double distLim2
 
   for i in range(len(coords)-2):
+    if masses[i] == INFINITY:
+      continue
+
     for j in range(i+2, len(coords)):
+      if masses[j] == INFINITY:
+        continue
+
       distLim = repDists[i] + radii[i] + repDists[j] + radii[j]
       distLim2 = distLim * distLim
 
@@ -374,10 +381,10 @@ def runDynamics(ndarray[double, ndim=2] coords,
 
   cdef double t0 = time.time()
 
-  nRep = getRepulsionList(repList, coords, repDists, radii)
+  nRep = getRepulsionList(repList, coords, repDists, radii, masses)
   # Allocate with some padding
   repList = numpy.resize(repList, (int(nRep * 1.2), 2))
-  nRep = getRepulsionList(repList, coords, repDists, radii)
+  nRep = getRepulsionList(repList, coords, repDists, radii, masses)
 
   fRep = getRepulsiveForce(repList, forces, coords, nRep,  fConstR, radii)
   fDist = getRestraintForce(forces, coords, restIndices, restLimits,
@@ -389,10 +396,10 @@ def runDynamics(ndarray[double, ndim=2] coords,
       dy = coords[i,1] - coordsPrev[i,1]
       dz = coords[i,2] - coordsPrev[i,2]
       if dx*dx + dy*dy + dz*dz > deltaLim[i]:
-        nRep = getRepulsionList(repList, coords, repDists, radii)
+        nRep = getRepulsionList(repList, coords, repDists, radii, masses)
         if nRep > len(repList):
           repList = numpy.resize(repList, (int(nRep * 1.2), 2))
-          nRep = getRepulsionList(repList, coords, repDists, radii)
+          nRep = getRepulsionList(repList, coords, repDists, radii, masses)
         elif nRep < (len(repList) // 2):
           repList = numpy.resize(repList, (int(nRep * 1.2), 2))
 
