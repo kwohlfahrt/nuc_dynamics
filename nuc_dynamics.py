@@ -382,10 +382,6 @@ def anneal_genome(contact_dict, num_models, particle_size,
     restraint_dists = restraint_dists[restraint_order]
     ambiguity = calc_ambiguity_strides(ambiguity_groups[restraint_order])
 
-    # Below will be set to restrict memory allocation in the repusion list
-    # (otherwise all vs all can be huge)
-    n_rep_max = int32(0)
-
     # Annealing parameters
     temp_start = anneal_params['temp_start']
     temp_end = anneal_params['temp_end']
@@ -420,10 +416,9 @@ def anneal_genome(contact_dict, num_models, particle_size,
         gc.collect() # Try to free some memory
 
         # Update coordinates for this temp
-        dt, n_rep_max = runDynamics(model_coords, masses, radii, restraint_indices, restraint_dists,
-                                    ambiguity, temp, time_step, dyn_steps, repulse, nRepMax=n_rep_max)
+        dt = runDynamics(model_coords, masses, radii, restraint_indices, restraint_dists,
+                         ambiguity, temp, time_step, dyn_steps, repulse)
 
-        n_rep_max = int32(1.05 * n_rep_max) # Base on num in prev cycle, plus an overhead
         time_taken += dt
 
       # Center

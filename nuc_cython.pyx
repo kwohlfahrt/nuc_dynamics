@@ -23,7 +23,6 @@ class NucCythonError(Exception):
 
 cdef int getRepulsionList(ndarray[int,   ndim=2] repList,
                           ndarray[double, ndim=2] coords,
-                          int nCoords, int nRepMax,
                           double repDist,
                           ndarray[double, ndim=1] radii):
 
@@ -33,8 +32,8 @@ cdef int getRepulsionList(ndarray[int,   ndim=2] repList,
   cdef double distLim
   cdef double distLim2
 
-  for i in range(nCoords-2):
-    for j in range(i+2, nCoords):
+  for i in range(len(coords)-2):
+    for j in range(i+2, len(coords)):
       distLim = repDist + radii[i] + radii[j]
       distLim2 = distLim * distLim
 
@@ -55,14 +54,12 @@ cdef int getRepulsionList(ndarray[int,   ndim=2] repList,
       if d2 > distLim2:
         continue
 
-      repList[n,0] = i
-      repList[n,1] = j
+      # If max is exceeded, array will be resized and recalculated
+      if n < len(repList):
+        repList[n,0] = i
+        repList[n,1] = j
 
       n += 1
-
-      #return if we reached max, something is seriously wrong anyway
-      if n == nRepMax:
-        return n
 
   return n
 
@@ -464,7 +461,7 @@ def runDynamics(ndarray[double, ndim=2] coords,
                 double fConstR=1.0, double fConstD=25.0, double beta=10.0,
                 double repDist=1.5, # A heuristic to limit the repulsion list
                 double tTaken=0.0, int printInterval=10000,
-                double tot0=20.458, int nRepMax=0):
+                double tot0=20.458):
 
   cdef int nRest = len(restIndices)
   cdef int nCoords = len(coords)
@@ -491,9 +488,6 @@ def runDynamics(ndarray[double, ndim=2] coords,
 
   cdef int i, j, n, step, nViol, nRep = 0
 
-  if not nRepMax:
-    nRepMax = nCoords*800
-
   cdef double d2, dx, dy, dz, ek, rmsd, tStep0, temp, fDist, fRep
   cdef double deltaLim = 0.25 * repDist * repDist
   cdef double Langevin_gamma
@@ -504,8 +498,7 @@ def runDynamics(ndarray[double, ndim=2] coords,
   cdef ndarray[double, ndim=2] veloc = numpy.random.normal(0.0, 1.0, (nCoords, 3))
   veloc *= sqrt(tRef / getTemp(masses, veloc, nCoords))
 
-  cdef ndarray[int, ndim=2] repList = numpy.zeros((nRepMax, 2), numpy.int32)
-
+  cdef ndarray[int, ndim=2] repList = numpy.empty((0, 2), numpy.int32)
   cdef ndarray[double, ndim=2] coordsPrev = numpy.array(coords)
   cdef ndarray[double, ndim=2] accel = numpy.zeros((nCoords, 3))
   cdef ndarray[double, ndim=2] forces = numpy.zeros((nCoords, 3))
@@ -515,7 +508,10 @@ def runDynamics(ndarray[double, ndim=2] coords,
   for step in range(nSteps):
 
     if step == 0:
-      nRep = getRepulsionList(repList, coords, nCoords, nRepMax, repDist, radii) # Handle errors
+      nRep = getRepulsionList(repList, coords, repDist, radii)
+      # Allocate with some padding
+      repList = numpy.resize(repList, (int(nRep * 1.2), 2))
+      nRep = getRepulsionList(repList, coords, repDist, radii)
 
       fRep = getRepulsiveForce(repList, forces, coords, nRep,  fConstR, radii)
       fDist = getRestraintForce(forces, coords, restIndices, restLimits, restAmbig, nRest, fConstD)
@@ -526,7 +522,12 @@ def runDynamics(ndarray[double, ndim=2] coords,
         dy = coords[i,1] - coordsPrev[i,1]
         dz = coords[i,2] - coordsPrev[i,2]
         if dx*dx + dy*dy + dz*dz > deltaLim:
-          nRep = getRepulsionList(repList, coords, nCoords, nRepMax, repDist, radii) # Handle errors
+          nRep = getRepulsionList(repList, coords, repDist, radii)
+          if nRep > len(repList):
+            repList = numpy.resize(repList, (int(nRep * 1.2), 2))
+            nRep = getRepulsionList(repList, coords, repDist, radii)
+          elif nRep < (len(repList) // 2):
+            repList = numpy.resize(repList, (int(nRep * 1.2), 2))
 
           for i in range(nCoords):
             coordsPrev[i,0] = coords[i,0]
@@ -555,7 +556,7 @@ def runDynamics(ndarray[double, ndim=2] coords,
 
     tTaken += tStep
 
-  return tTaken, nRep
+  return tTaken
 
 
 def calc_restraints(contact_dict, pos_dict, int particle_size=10000,
