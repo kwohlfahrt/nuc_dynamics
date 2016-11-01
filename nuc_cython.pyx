@@ -505,35 +505,32 @@ def runDynamics(ndarray[double, ndim=2] coords,
 
   cdef double t0 = time.time()
 
+  nRep = getRepulsionList(repList, coords, repDist, radii)
+  # Allocate with some padding
+  repList = numpy.resize(repList, (int(nRep * 1.2), 2))
+  nRep = getRepulsionList(repList, coords, repDist, radii)
+
+  fRep = getRepulsiveForce(repList, forces, coords, nRep,  fConstR, radii)
+  fDist = getRestraintForce(forces, coords, restIndices, restLimits, restAmbig, nRest, fConstD)
+
   for step in range(nSteps):
-
-    if step == 0:
-      nRep = getRepulsionList(repList, coords, repDist, radii)
-      # Allocate with some padding
-      repList = numpy.resize(repList, (int(nRep * 1.2), 2))
-      nRep = getRepulsionList(repList, coords, repDist, radii)
-
-      fRep = getRepulsiveForce(repList, forces, coords, nRep,  fConstR, radii)
-      fDist = getRestraintForce(forces, coords, restIndices, restLimits, restAmbig, nRest, fConstD)
-
-    else:
-      for i in range(nCoords):
-        dx = coords[i,0] - coordsPrev[i,0]
-        dy = coords[i,1] - coordsPrev[i,1]
-        dz = coords[i,2] - coordsPrev[i,2]
-        if dx*dx + dy*dy + dz*dz > deltaLim:
+    for i in range(nCoords):
+      dx = coords[i,0] - coordsPrev[i,0]
+      dy = coords[i,1] - coordsPrev[i,1]
+      dz = coords[i,2] - coordsPrev[i,2]
+      if dx*dx + dy*dy + dz*dz > deltaLim:
+        nRep = getRepulsionList(repList, coords, repDist, radii)
+        if nRep > len(repList):
+          repList = numpy.resize(repList, (int(nRep * 1.2), 2))
           nRep = getRepulsionList(repList, coords, repDist, radii)
-          if nRep > len(repList):
-            repList = numpy.resize(repList, (int(nRep * 1.2), 2))
-            nRep = getRepulsionList(repList, coords, repDist, radii)
-          elif nRep < (len(repList) // 2):
-            repList = numpy.resize(repList, (int(nRep * 1.2), 2))
+        elif nRep < (len(repList) // 2):
+          repList = numpy.resize(repList, (int(nRep * 1.2), 2))
 
-          for i in range(nCoords):
-            coordsPrev[i,0] = coords[i,0]
-            coordsPrev[i,1] = coords[i,1]
-            coordsPrev[i,2] = coords[i,2]
-          break # Already re-calculated, no need to check more
+        for i in range(nCoords):
+          coordsPrev[i,0] = coords[i,0]
+          coordsPrev[i,1] = coords[i,1]
+          coordsPrev[i,2] = coords[i,2]
+        break # Already re-calculated, no need to check more
 
     updateMotion(masses, forces, accel, veloc, coords, nCoords, tRef, tStep0, beta)
 
