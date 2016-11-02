@@ -236,7 +236,7 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
                               double distSwitch=0.5, double asymptote=1.0):
 
   cdef int i, j, k, n, nAmbig
-  cdef double a, b, da, d, dmin, dmax, dx, dy, dz
+  cdef double a, b, d, dmin, dmax, dx, dy, dz
   cdef double r, r2, s2, rjk, ujk, force = 0, t
 
   b = asymptote*distSwitch*distSwitch - exponent*distSwitch*distSwitch*distSwitch
@@ -250,39 +250,25 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
     nAmbig = restAmbig[i]
     r2 = 0.0
 
-    if nAmbig == 1:
-      j = restIndices[i,0]
-      k = restIndices[i,1]
+    for n in range(nAmbig):
+      j = restIndices[i+n,0]
+      k = restIndices[i+n,1]
 
       if j != k:
         dx = coords[j,0] - coords[k,0]
         dy = coords[j,1] - coords[k,1]
         dz = coords[j,2] - coords[k,2]
-        r2 = dx*dx + dy*dy + dz*dz
+        r = dx*dx + dy*dy + dz*dz
+        r2 += 1.0 / (r * r)
 
+    if r2 > 0:
+      r2 = 1.0 / sqrt(r2)
     else:
-      for n in range(nAmbig):
-        j = restIndices[i+n,0]
-        k = restIndices[i+n,1]
-
-        if j != k:
-          dx = coords[j,0] - coords[k,0]
-          dy = coords[j,1] - coords[k,1]
-          dz = coords[j,2] - coords[k,2]
-          r = dx*dx + dy*dy + dz*dz
-          r2 += 1.0 / (r * r)
-
-      if r2 > 0:
-        r2 = 1.0 / sqrt(r2)
-
-    if r2 <= 0:
       i += nAmbig
       continue
 
     dmin = restLimits[i,0]
     dmax = restLimits[i,1]
-
-    da = dmax + distSwitch
 
     if r2 < dmin*dmin:
       r2 = max(r2, 1e-8)
@@ -295,7 +281,7 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
       r = sqrt(r2)
       d = r - dmax
 
-      if r <= da:
+      if d <= distSwitch:
         ujk = fConst * d * d
         rjk = - fConst * 2 * d
 
@@ -309,57 +295,30 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
 
     force += ujk
 
-    if nAmbig == 1:
-      j = restIndices[i,0]
-      k = restIndices[i,1]
+    for n in range(nAmbig):
+      j = restIndices[i+n,0]
+      k = restIndices[i+n,1]
 
       if j == k:
-        i += nAmbig
         continue
 
-      t = rjk / r
       dx = coords[j,0] - coords[k,0]
       dy = coords[j,1] - coords[k,1]
       dz = coords[j,2] - coords[k,2]
+
+      s2 = dx*dx + dy*dy + dz*dz
+      t = rjk * r2 * r2 * r / (s2 * s2 * s2)
 
       dx *= t
       dy *= t
       dz *= t
 
       forces[j,0] += dx
-      forces[j,1] += dy
-      forces[j,2] += dz
-
       forces[k,0] -= dx
+      forces[j,1] += dy
       forces[k,1] -= dy
+      forces[j,2] += dz
       forces[k,2] -= dz
-
-    else:
-
-      for n in range(nAmbig):
-        j = restIndices[i+n,0]
-        k = restIndices[i+n,1]
-
-        if j == k:
-          continue
-
-        dx = coords[j,0] - coords[k,0]
-        dy = coords[j,1] - coords[k,1]
-        dz = coords[j,2] - coords[k,2]
-
-        s2 = dx*dx + dy*dy + dz*dz
-        t = rjk * r2 * r2 * r / (s2 * s2 * s2)
-
-        dx *= t
-        dy *= t
-        dz *= t
-
-        forces[j,0] += dx
-        forces[k,0] -= dx
-        forces[j,1] += dy
-        forces[k,1] -= dy
-        forces[j,2] += dz
-        forces[k,2] -= dz
 
     i += nAmbig
 
