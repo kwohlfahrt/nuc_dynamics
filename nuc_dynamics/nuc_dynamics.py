@@ -636,7 +636,7 @@ def main(args=None):
     cq = cl.CommandQueue(ctx)
     with (Path(__file__).parent / "kernels.cl").open() as f:
       program = cl.Program(ctx, f.read()).build()
-      kernels = ['updateVelocity', 'updateMotion', 'getRepulsiveForce']
+      kernels = ['updateVelocity', 'updateMotion', 'getRepulsiveForce', 'getRepulsionList']
       kernels = {name: getattr(program, name) for name in kernels}
       kernels['updateVelocity'].set_scalar_arg_dtypes(
         [None, None, None, None, np.float64, np.float64]
@@ -646,6 +646,9 @@ def main(args=None):
       )
       kernels['getRepulsiveForce'].set_scalar_arg_dtypes(
         [None, None, None, None, np.float64]
+      )
+      kernels['getRepulsionList'].set_scalar_arg_dtypes(
+        [None, None, None, None, None, None, np.int32]
       )
 
     parser = ArgumentParser(description="Calculate a structure from a contact file.")

@@ -15,56 +15,6 @@ class NucCythonError(Exception):
     Exception.__init__(self, err)
 
 
-cdef int getRepulsionList(ndarray[int,   ndim=2] repList,
-                          ndarray[double, ndim=2] coords,
-                          ndarray[double, ndim=1] repDists,
-                          ndarray[double, ndim=1] radii,
-                          ndarray[double, ndim=1] masses):
-
-  cdef int i, j
-  cdef int n = 0
-  cdef double dx, dy, dz, d2
-  cdef double distLim
-  cdef double distLim2
-
-  for i in range(len(coords)-2):
-    if masses[i] == INFINITY:
-      continue
-
-    for j in range(i+2, len(coords)):
-      if masses[j] == INFINITY:
-        continue
-
-      distLim = repDists[i] + radii[i] + repDists[j] + radii[j]
-      distLim2 = distLim * distLim
-
-      dx = coords[i,0] - coords[j,0]
-      if abs(dx) > distLim:
-        continue
-
-      dy = coords[i,1] - coords[j,1]
-      if abs(dy) > distLim:
-        continue
-
-      dz = coords[i,2] - coords[j,2]
-      if abs(dz) > distLim:
-        continue
-
-      d2 = dx*dx + dy*dy + dz*dz
-
-      if d2 > distLim2:
-        continue
-
-      # If max is exceeded, array will be resized and recalculated
-      if n < len(repList):
-        repList[n,0] = i
-        repList[n,1] = j
-
-      n += 1
-
-  return n
-
-
 cpdef double getTemp(ndarray[double, ndim=1] masses,
                      ndarray[double, ndim=2] veloc,
                      int nCoords):
@@ -239,7 +189,7 @@ def runDynamics(ctx, cq, kernels,
   if nRest != len(restLimits):
     raise NucCythonError('Number of restraint index pairs does not match number of restraint limits')
 
-  cdef int i, j, n, step, nViol, nRep = 0
+  cdef int i, j, n, step, nViol
 
   cdef double d2, dx, dy, dz, ek, rmsd, tStep0, temp, fDist, fRep
   cdef double Langevin_gamma
@@ -276,6 +226,9 @@ def runDynamics(ctx, cq, kernels,
     ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_WRITE,
     nCoords * 3 * dtype('double').itemsize
   )
+  nRep_buf = cl.Buffer(
+    ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_WRITE, dtype('int32').itemsize
+  )
 
   cl.enqueue_fill_buffer(
     cq, accel_buf, numpy.zeros(1, dtype='float64'),
@@ -303,21 +256,38 @@ def runDynamics(ctx, cq, kernels,
   cdef double t0 = time.time()
   cdef double r # for use as kernel parameter
 
-  nRep = getRepulsionList(
-    numpy.empty((0, 2), dtype='int32'), coords, repDists, radii, masses
+  e = cl.enqueue_fill_buffer(
+    cq, nRep_buf, numpy.zeros(1, dtype='int32'), 0, dtype('int32').itemsize
   )
-  nRepMax = int(nRep * 1.2) # Allocate with some padding
+  e = kernels['getRepulsionList'](
+    cq, (nCoords-2, nCoords-2), None,
+    None, coords_buf, radii_buf, repDists_buf, masses_buf, nRep_buf, 0,
+    global_offset=(0, 2), wait_for=[e]
+  )
+  (nRep, _) = cl.enqueue_map_buffer(
+    cq, nRep_buf, cl.map_flags.READ,
+    0, 1, dtype('int32'), wait_for=[e], is_blocking=True,
+  )
+  nRepMax = int(nRep[0] * 1.2) # Allocate with some padding
+  del nRep
   repList_buf = cl.Buffer(
     ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
     nRepMax * 2 * dtype('int32').itemsize
   )
-  (repList, _) = cl.enqueue_map_buffer(
-    cq, repList_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
-    0, (nRepMax, 2), dtype('int32'), is_blocking=True
+  e = cl.enqueue_fill_buffer(
+    cq, nRep_buf, numpy.zeros(1, dtype='int32'), 0, dtype('int32').itemsize
   )
-  nRep = getRepulsionList(repList, coords, repDists, radii, masses)
+  e = kernels['getRepulsionList'](
+    cq, (nCoords-2, nCoords-2), None,
+    repList_buf, coords_buf, radii_buf, repDists_buf, masses_buf, nRep_buf, nRepMax,
+    global_offset=(0, 2), wait_for=[e]
+  )
+  (nRep, _) = cl.enqueue_map_buffer(
+    cq, nRep_buf, cl.map_flags.READ,
+    0, 1, dtype('int32'), wait_for=[e], is_blocking=True,
+  )
+  cl.wait_for_events([cl.enqueue_barrier(cq)])
 
-  del repList
   e = kernels['getRepulsiveForce'](
     cq, (nRep,), None,
     repList_buf, forces_buf, coords_buf, radii_buf, fConstR,
@@ -335,29 +305,49 @@ def runDynamics(ctx, cq, kernels,
       dy = coords[i,1] - coordsPrev[i,1]
       dz = coords[i,2] - coordsPrev[i,2]
       if dx*dx + dy*dy + dz*dz > deltaLim[i]:
-        (repList, _) = cl.enqueue_map_buffer(
-          cq, repList_buf, cl.map_flags.READ | cl.map_flags.WRITE,
-          0, (nRepMax, 2), dtype('int32'), wait_for=[e], is_blocking=True
+        del nRep
+        e = cl.enqueue_fill_buffer(
+          cq, nRep_buf, numpy.zeros(1, dtype='int32'), 0, dtype('int32').itemsize
         )
-        nRep = getRepulsionList(repList, coords, repDists, radii, masses)
-        del repList
-        if nRep > nRepMax:
-          nRepMax = int(nRep * 1.2)
-          repList_buf = cl.Buffer(ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
-                                  nRepMax * 2 * dtype('int32').itemsize)
-          (repList, _) = cl.enqueue_map_buffer(
-            cq, repList_buf, cl.map_flags.READ | cl.map_flags.WRITE,
-            0, (nRepMax, 2), dtype('int32'), is_blocking=True
+        e = kernels['getRepulsionList'](
+          cq, (nCoords-2, nCoords-2), None,
+          repList_buf, coords_buf, radii_buf, repDists_buf, masses_buf, nRep_buf, nRepMax,
+          global_offset=(0, 2), wait_for=[e]
+        )
+        (nRep, _) = cl.enqueue_map_buffer(
+          cq, nRep_buf, cl.map_flags.READ,
+          0, 1, dtype('int32'), wait_for=[e], is_blocking=True,
+        )
+        if nRep[0] > nRepMax:
+          nRepMax = int(nRep[0] * 1.2)
+          del nRep
+          repList_buf = cl.Buffer(
+            ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+            nRepMax * 2 * dtype('int32').itemsize
           )
-          nRep = getRepulsionList(repList, coords, repDists, radii, masses)
-          del repList
-        elif nRep < (nRepMax // 2):
-          nRepMax = int(nRep * 1.2)
+          e = cl.enqueue_fill_buffer(
+            cq, nRep_buf, numpy.zeros(1, dtype='int32'), 0, dtype('int32').itemsize
+          )
+          e = kernels['getRepulsionList'](
+            cq, (nCoords-2, nCoords-2), None,
+          repList_buf, coords_buf, radii_buf, repDists_buf, masses_buf, nRep_buf, nRepMax,
+            global_offset=(0, 2), wait_for=[e]
+          )
+          (nRep, _) = cl.enqueue_map_buffer(
+            cq, nRep_buf, cl.map_flags.READ,
+            0, 1, dtype('int32'), wait_for=[e], is_blocking=True,
+          )
+        elif nRep[0] < (nRepMax // 2):
+          nRepMax = int(nRep[0] * 1.2)
           old_repList_buf = repList_buf
-          repList_buf = cl.Buffer(ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
-                                  nRepMax * 2 * dtype('int32').itemsize)
-          cl.enqueue_copy(cq, repList_buf, old_repList_buf,
-                          byte_count=nRep * 2 * dtype('int32').itemsize)
+          repList_buf = cl.Buffer(
+            ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+            nRepMax * 2 * dtype('int32').itemsize
+          )
+          cl.enqueue_copy(
+            cq, repList_buf, old_repList_buf,
+            byte_count=nRep[0] * 2 * dtype('int32').itemsize
+          )
           del old_repList_buf
 
         for i in range(nCoords):
@@ -422,7 +412,7 @@ def runDynamics(ctx, cq, kernels,
       temp = getTemp(masses, veloc, nCoords)
       nViol, rmsd = getStats(restIndices, restLimits, coords, nRest)
 
-      data = (temp, fDist, rmsd, nViol, nRep)
+      data = (temp, fDist, rmsd, nViol, nRep[0])
       print('temp:%7.2lf  fDist:%7.2lf  rmsd:%7.2lf  nViol:%5d  nRep:%5d' % data)
 
     tTaken += tStep
