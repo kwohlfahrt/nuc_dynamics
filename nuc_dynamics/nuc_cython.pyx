@@ -226,8 +226,19 @@ def runDynamics(ctx, cq, kernels,
     ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_WRITE,
     nCoords * 3 * dtype('double').itemsize
   )
+  coordsPrev_buf = cl.Buffer(
+    ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_ONLY,
+    nCoords * 3 * dtype('double').itemsize
+  )
+  deltaLim_buf = cl.Buffer(
+    ctx, cl.mem_flags.HOST_WRITE_ONLY | cl.mem_flags.READ_ONLY,
+    nCoords * dtype('double').itemsize
+  )
   nRep_buf = cl.Buffer(
     ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_WRITE, dtype('int32').itemsize
+  )
+  recalcRep_buf = cl.Buffer(
+    ctx, cl.mem_flags.READ_WRITE, dtype('int32').itemsize
   )
 
   cl.enqueue_fill_buffer(
@@ -238,14 +249,21 @@ def runDynamics(ctx, cq, kernels,
     cq, forces_buf, numpy.zeros(1, dtype='float64'),
     0, nCoords * 3 * dtype('float64').itemsize
   )
+  e = cl.enqueue_copy(
+    cq, coordsPrev_buf, coords_buf, byte_count=nCoords * 3 * dtype('double').itemsize
+  )
   (veloc, _) = cl.enqueue_map_buffer(
     cq, veloc_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
     0, (nCoords, 3), dtype('float64'), is_blocking=False
   )
+  (deltaLim, _) = cl.enqueue_map_buffer(
+    cq, veloc_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
+    0, nCoords, dtype('float64'), is_blocking=False
+  )
   cl.wait_for_events([cl.enqueue_barrier(cq)])
 
-  cdef ndarray[double, ndim=1] deltaLim = repDists * repDists
-  cdef ndarray[double, ndim=2] coordsPrev = numpy.array(coords)
+  deltaLim[...] = repDists * repDists
+  del deltaLim
 
   veloc[...] = numpy.random.normal(0.0, 1.0, (nCoords, 3))
   veloc *= sqrt(tRef / getTemp(masses, veloc, nCoords))
@@ -271,7 +289,7 @@ def runDynamics(ctx, cq, kernels,
   nRepMax = int(nRep[0] * 1.2) # Allocate with some padding
   del nRep
   repList_buf = cl.Buffer(
-    ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+    ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_WRITE,
     nRepMax * 2 * dtype('int32').itemsize
   )
   e = cl.enqueue_fill_buffer(
@@ -300,12 +318,40 @@ def runDynamics(ctx, cq, kernels,
                             restWeight, restAmbig, fConstD)
 
   for step in range(nSteps):
-    for i in range(nCoords):
-      dx = coords[i,0] - coordsPrev[i,0]
-      dy = coords[i,1] - coordsPrev[i,1]
-      dz = coords[i,2] - coordsPrev[i,2]
-      if dx*dx + dy*dy + dz*dz > deltaLim[i]:
+    e = cl.enqueue_fill_buffer(
+      cq, recalcRep_buf, numpy.zeros(1, dtype='int32'), 0, dtype('int32').itemsize
+    )
+    e = kernels['testDelta'](
+      cq, (nCoords,), None,
+      coords_buf, coordsPrev_buf, deltaLim_buf, recalcRep_buf,
+      wait_for=[e]
+    )
+    (recalcRep, _) = cl.enqueue_map_buffer(
+      cq, recalcRep_buf, cl.map_flags.READ | cl.map_flags.WRITE,
+      0, 1, dtype('int32'), is_blocking=True, wait_for=[e]
+    )
+
+    if recalcRep[0]:
+      del nRep
+      e = cl.enqueue_fill_buffer(
+        cq, nRep_buf, numpy.zeros(1, dtype='int32'), 0, dtype('int32').itemsize
+      )
+      e = kernels['getRepulsionList'](
+        cq, (nCoords-2, nCoords-2), None,
+        repList_buf, coords_buf, radii_buf, repDists_buf, masses_buf, nRep_buf, nRepMax,
+        global_offset=(0, 2), wait_for=[e]
+      )
+      (nRep, _) = cl.enqueue_map_buffer(
+        cq, nRep_buf, cl.map_flags.READ,
+        0, 1, dtype('int32'), wait_for=[e], is_blocking=True,
+      )
+      if nRep[0] > nRepMax:
+        nRepMax = int(nRep[0] * 1.2)
         del nRep
+        repList_buf = cl.Buffer(
+          ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+          nRepMax * 2 * dtype('int32').itemsize
+        )
         e = cl.enqueue_fill_buffer(
           cq, nRep_buf, numpy.zeros(1, dtype='int32'), 0, dtype('int32').itemsize
         )
@@ -318,43 +364,21 @@ def runDynamics(ctx, cq, kernels,
           cq, nRep_buf, cl.map_flags.READ,
           0, 1, dtype('int32'), wait_for=[e], is_blocking=True,
         )
-        if nRep[0] > nRepMax:
-          nRepMax = int(nRep[0] * 1.2)
-          del nRep
-          repList_buf = cl.Buffer(
-            ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
-            nRepMax * 2 * dtype('int32').itemsize
-          )
-          e = cl.enqueue_fill_buffer(
-            cq, nRep_buf, numpy.zeros(1, dtype='int32'), 0, dtype('int32').itemsize
-          )
-          e = kernels['getRepulsionList'](
-            cq, (nCoords-2, nCoords-2), None,
-          repList_buf, coords_buf, radii_buf, repDists_buf, masses_buf, nRep_buf, nRepMax,
-            global_offset=(0, 2), wait_for=[e]
-          )
-          (nRep, _) = cl.enqueue_map_buffer(
-            cq, nRep_buf, cl.map_flags.READ,
-            0, 1, dtype('int32'), wait_for=[e], is_blocking=True,
-          )
-        elif nRep[0] < (nRepMax // 2):
-          nRepMax = int(nRep[0] * 1.2)
-          old_repList_buf = repList_buf
-          repList_buf = cl.Buffer(
-            ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
-            nRepMax * 2 * dtype('int32').itemsize
-          )
-          cl.enqueue_copy(
-            cq, repList_buf, old_repList_buf,
-            byte_count=nRep[0] * 2 * dtype('int32').itemsize
-          )
-          del old_repList_buf
-
-        for i in range(nCoords):
-          coordsPrev[i,0] = coords[i,0]
-          coordsPrev[i,1] = coords[i,1]
-          coordsPrev[i,2] = coords[i,2]
-        break # Already re-calculated, no need to check more
+      elif nRep[0] < (nRepMax // 2):
+        nRepMax = int(nRep[0] * 1.2)
+        old_repList_buf = repList_buf
+        repList_buf = cl.Buffer(
+          ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+          nRepMax * 2 * dtype('int32').itemsize
+        )
+        cl.enqueue_copy(
+          cq, repList_buf, old_repList_buf,
+          byte_count=nRep[0] * 2 * dtype('int32').itemsize
+        )
+        del old_repList_buf
+      e = cl.enqueue_copy(cq, coordsPrev_buf, coords_buf,
+                          byte_count=nCoords * 3 * dtype('double').itemsize)
+    del recalcRep
 
     r = beta * (tRef / max(getTemp(masses, veloc, nCoords), 0.001) - 1.0)
     del coords, veloc, forces
