@@ -1,4 +1,4 @@
-from libc.math cimport exp, abs, sqrt, ceil
+from libc.math cimport exp, abs, sqrt, ceil, pow
 from numpy cimport ndarray, double_t, int_t, dtype
 import numpy, time
 
@@ -235,51 +235,47 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
                               int nRest, double fConst, double exponent=2.0,
                               double distSwitch=0.5, double asymptote=1.0):
 
-  cdef int i, j, k, n, nAmbig
+  cdef int i, j, k, n, m, nAmbig
   cdef double a, b, d, dmin, dmax, dx, dy, dz
   cdef double r, r2, s2, rjk, ujk, force = 0, t
 
   b = asymptote*distSwitch*distSwitch - exponent*distSwitch*distSwitch*distSwitch
   a = distSwitch*distSwitch - asymptote*distSwitch - b/ distSwitch
 
-  i = 0
-
-  while i < nRest:
-
-
-    nAmbig = restAmbig[i]
+  for m in range(len(restAmbig) - 1):
+    nAmbig = restAmbig[m+1] - restAmbig[m]
+    i = restAmbig[m]
     r2 = 0.0
 
     for n in range(nAmbig):
       j = restIndices[i+n,0]
       k = restIndices[i+n,1]
 
-      if j != k:
-        dx = coords[j,0] - coords[k,0]
-        dy = coords[j,1] - coords[k,1]
-        dz = coords[j,2] - coords[k,2]
-        r = dx*dx + dy*dy + dz*dz
-        r2 += 1.0 / (r * r)
+      if j == k:
+        continue
 
-    if r2 > 0:
-      r2 = 1.0 / sqrt(r2)
-    else:
-      i += nAmbig
+      dx = coords[j,0] - coords[k,0]
+      dy = coords[j,1] - coords[k,1]
+      dz = coords[j,2] - coords[k,2]
+      r = dx*dx + dy*dy + dz*dz
+      r2 += 1.0 / (r * r)
+
+    if r2 <= 0:
       continue
+
+    r2 = 1.0 / sqrt(r2)
 
     dmin = restLimits[i,0]
     dmax = restLimits[i,1]
 
     if r2 < dmin*dmin:
       r2 = max(r2, 1e-8)
-      r = sqrt(r2)
-      d = dmin - r
+      d = dmin - sqrt(r2)
       ujk = fConst * d * d
       rjk = fConst * 2 * d
 
     elif r2 > dmax*dmax:
-      r = sqrt(r2)
-      d = r - dmax
+      d = sqrt(r2) - dmax
 
       if d <= distSwitch:
         ujk = fConst * d * d
@@ -307,7 +303,7 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
       dz = coords[j,2] - coords[k,2]
 
       s2 = dx*dx + dy*dy + dz*dz
-      t = rjk * r2 * r2 * r / (s2 * s2 * s2)
+      t = rjk * pow(r2, 2.5) / (s2 * s2 * s2)
 
       dx *= t
       dy *= t
@@ -319,8 +315,6 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
       forces[k,1] -= dy
       forces[j,2] += dz
       forces[k,2] -= dz
-
-    i += nAmbig
 
   return force
 
@@ -442,7 +436,7 @@ def runDynamics(ndarray[double, ndim=2] coords,
   if nRest != len(restLimits):
     raise NucCythonError('Number of restraint index pairs does not match number of restraint limits')
 
-  if len(restAmbig) != nRest:
+  if len(restAmbig) != nRest + 1:
     raise NucCythonError('Size of ambiguity list does not match number of restraints')
 
   cdef int i, j, n, step, nViol, nRep = 0
@@ -664,21 +658,24 @@ def concatenate_restraints(restraint_dict, pos_dict):
 
 def calc_ambiguity_strides(ndarray[int, ndim=1] groups):
   """
-  Convert (sorted) ambiguity groups to ambiguity strides suitable for
+  Convert (sorted) ambiguity groups to group-offsets for
   annealing calculations.
   """
-  cdef int i = 0, count = 1, current_group = 0
-  cdef ndarray[int, ndim=1] strides = numpy.empty(len(groups), 'int32')
+  cdef int i = 0, current_group = 0, ngroups = 0
+  # Maximum possible number of unique groups, plus one end element
+  cdef ndarray[int, ndim=1] starts = numpy.empty(len(groups) + 1, 'int32')
 
   for i in range(len(groups)):
     if groups[i] == current_group == 0:
-      strides[i] = 1
+      starts[ngroups] = i
+      ngroups += 1
     elif groups[i] == current_group:
-      count += 1
+      pass
     else:
-      strides[i-count:i] = count
+      starts[ngroups] = i
+      ngroups += 1
       current_group = groups[i]
-      count = 1
-  strides[i+1-count:i+1] = count
+  starts[ngroups] = len(groups)
+  starts = starts[:ngroups+1].copy()
 
-  return strides
+  return starts

@@ -27,25 +27,25 @@ def test_ambiguity_strides():
     from nuc_cython import calc_ambiguity_strides
 
     groups = np.array([0, 0, 1, 2, 3, 3, 0, 4, 4, 5], dtype='int32')
-    strides = np.array([1, 1, 1, 1, 2, 2, 1, 2, 2, 1], dtype='int32')
-    testing.assert_array_equal(calc_ambiguity_strides(groups), strides)
+    offsets = np.array([0, 1, 2, 3, 4, 6, 7, 9, 10], dtype='int32')
+    testing.assert_array_equal(calc_ambiguity_strides(groups), offsets)
 
     groups = np.array([1, 1, 1, 2, 3, 3, 0, 4, 4, 5], dtype='int32')
-    strides = np.array([3, 3, 3, 1, 2, 2, 1, 2, 2, 1], dtype='int32')
-    testing.assert_array_equal(calc_ambiguity_strides(groups), strides)
+    offsets = np.array([0, 3, 4, 6, 7, 9, 10], dtype='int32')
+    testing.assert_array_equal(calc_ambiguity_strides(groups), offsets)
 
 
 def test_ambiguity_strides_short():
     from nuc_cython import calc_ambiguity_strides
 
     groups = np.array([1], dtype='int32')
-    strides = np.array([1], dtype='int32')
-    testing.assert_array_equal(calc_ambiguity_strides(groups), strides)
+    offsets = np.array([0, 1], dtype='int32')
+    testing.assert_array_equal(calc_ambiguity_strides(groups), offsets)
 
     groups = np.array([0], dtype='int32')
-    strides = np.array([1], dtype='int32')
-    testing.assert_array_equal(calc_ambiguity_strides(groups), strides)
+    offsets = np.array([0, 1], dtype='int32')
+    testing.assert_array_equal(calc_ambiguity_strides(groups), offsets)
 
     groups = np.array([], dtype='int32')
-    strides = np.array([], dtype='int32')
-    testing.assert_array_equal(calc_ambiguity_strides(groups), strides)
+    offsets = np.array([0], dtype='int32')
+    testing.assert_array_equal(calc_ambiguity_strides(groups), offsets)
