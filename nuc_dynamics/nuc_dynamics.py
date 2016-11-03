@@ -425,7 +425,7 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
     """
 
     from numpy import (int32, ones, empty, random, concatenate, stack, argsort, arange,
-                       geomspace, linspace, arctan, full, zeros, dtype)
+                       geomspace, linspace, arctan, full, zeros, dtype, ascontiguousarray)
     from math import log, exp, atan, pi
     from functools import partial
     import gc
@@ -523,6 +523,22 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
       ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_ONLY,
       num_models * n_particles * dtype('float64').itemsize
     )
+    rest_indices_buf = cl.Buffer(
+      ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_ONLY |
+      cl.mem_flags.COPY_HOST_PTR, hostbuf=ascontiguousarray(restraints['indices'])
+    )
+    rest_limits_buf = cl.Buffer(
+      ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_ONLY |
+      cl.mem_flags.COPY_HOST_PTR, hostbuf=ascontiguousarray(restraints['dists'])
+    )
+    rest_weights_buf = cl.Buffer(
+      ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_ONLY |
+      cl.mem_flags.COPY_HOST_PTR, hostbuf=ascontiguousarray(restraints['weight'])
+    )
+    ambiguity_buf = cl.Buffer(
+      ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_ONLY |
+      cl.mem_flags.COPY_HOST_PTR, hostbuf=ambiguity
+    )
 
     (coords_map, _) = cl.enqueue_map_buffer(
       cq, coords_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
@@ -566,7 +582,8 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
         dt = runDynamics(
           ctx, cq, kernels,
           model_coords_buf, masses_buf, radii_buf, repDists_buf, n_particles,
-          restraints['indices'], restraints['dists'], restraints['weight'], ambiguity,
+          rest_indices_buf, rest_limits_buf, rest_weights_buf, len(restraints),
+          ambiguity_buf, len(ambiguity),
           temp, time_step, dynamics_steps, repulse, dist,
           printInterval=printInterval
         )

@@ -164,30 +164,15 @@ cpdef double getRestraintForce(ndarray[double, ndim=2] forces,
 
 def runDynamics(ctx, cq, kernels,
                 coords_buf, masses_buf, radii_buf, repDists_buf, int nCoords,
-                ndarray[int, ndim=2] restIndices,
-                ndarray[double, ndim=2] restLimits,
-                ndarray[double, ndim=1] restWeight,
-                ndarray[int, ndim=1] restAmbig,
+                restIndices_buf, restLimits_buf, restWeights_buf, int nRest,
+                restAmbig_buf, int nAmbig,
                 double tRef=1000.0, double tStep=0.001, int nSteps=1000,
                 double fConstR=1.0, double fConstD=25.0, double beta=10.0,
                 double tTaken=0.0, int printInterval=10000,
                 double tot0=20.458):
 
-  cdef int nRest = len(restIndices)
-
   if nCoords < 2:
     raise NucCythonError('Too few coodinates')
-
-  indices = set(restIndices.ravel())
-  if min(indices) < 0:
-    raise NucCythonError('Restraint index negative')
-
-  if max(indices) >= nCoords:
-    data = (max(indices), nCoords)
-    raise NucCythonError('Restraint index "%d" out of bounds (> %d)' % data)
-
-  if nRest != len(restLimits):
-    raise NucCythonError('Number of restraint index pairs does not match number of restraint limits')
 
   cdef int i, j, n, step, nViol
 
@@ -309,6 +294,22 @@ def runDynamics(ctx, cq, kernels,
   e = kernels['getRepulsiveForce'](
     cq, (nRep,), None,
     repList_buf, forces_buf, coords_buf, radii_buf, fConstR,
+  )
+  (restAmbig, _) = cl.enqueue_map_buffer(
+    cq, restAmbig_buf, cl.map_flags.READ,
+    0, nAmbig, dtype('int32'), wait_for=[e], is_blocking=False
+  )
+  (restWeight, _) = cl.enqueue_map_buffer(
+    cq, restWeights_buf, cl.map_flags.READ,
+    0, nRest, dtype('float64'), wait_for=[e], is_blocking=False
+  )
+  (restLimits, _) = cl.enqueue_map_buffer(
+    cq, restLimits_buf, cl.map_flags.READ,
+    0, (nRest, 2), dtype('float64'), wait_for=[e], is_blocking=False
+  )
+  (restIndices, _) = cl.enqueue_map_buffer(
+    cq, restIndices_buf, cl.map_flags.READ,
+    0, (nRest, 2), dtype('int32'), wait_for=[e], is_blocking=False
   )
   (forces, _) = cl.enqueue_map_buffer(
     cq, forces_buf, cl.map_flags.READ | cl.map_flags.WRITE,
