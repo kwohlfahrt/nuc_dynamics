@@ -1,5 +1,5 @@
 from nuc_cython import (runDynamics, getSupportedPairs, calc_restraints, Restraint,
-                        concatenate_restraints, calc_ambiguity_strides, getInterpolatedCoords)
+                        concatenate_restraints, getInterpolatedCoords)
 
 def load_ncc_file(file_path):
   """Load chromosome and contact data from NCC format file, as output from NucProcess"""
@@ -308,6 +308,21 @@ def calc_bins(chromo_limits, particle_size):
   return bins
 
 
+def calc_ambiguity_offsets(groups):
+  """
+  Convert (sorted) ambiguity groups to group-offsets for
+  annealing calculations.
+  """
+  from numpy import arange, zeros
+
+  offsets = arange(len(groups) + 1, dtype='int32')
+  group_starts = zeros(len(offsets), dtype='bool')
+  group_starts[-1] = group_starts[0] = 1
+  group_starts[:-1] |= groups == 0
+  group_starts[1:-1] |= groups[1:] != groups[:-1]
+  return offsets[group_starts]
+
+
 def backbone_restraints(seq_pos, particle_size, lower=0.1, upper=1.1):
   from numpy import empty, arange, array
 
@@ -380,7 +395,7 @@ def anneal_genome(contact_dict, num_models, particle_size,
     restraint_order = argsort(ambiguity_groups)
     restraint_indices = restraint_indices[restraint_order]
     restraint_dists = restraint_dists[restraint_order]
-    ambiguity = calc_ambiguity_strides(ambiguity_groups[restraint_order])
+    ambiguity = calc_ambiguity_offsets(ambiguity_groups[restraint_order])
 
     # Annealing parameters
     temp_start = anneal_params['temp_start']

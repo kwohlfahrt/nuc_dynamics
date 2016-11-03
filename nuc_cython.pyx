@@ -654,28 +654,3 @@ def concatenate_restraints(restraint_dict, pos_dict):
         m += 1
 
   return particle_indices, distances, ambiguity_groups
-
-
-def calc_ambiguity_strides(ndarray[int, ndim=1] groups):
-  """
-  Convert (sorted) ambiguity groups to group-offsets for
-  annealing calculations.
-  """
-  cdef int i = 0, current_group = 0, ngroups = 0
-  # Maximum possible number of unique groups, plus one end element
-  cdef ndarray[int, ndim=1] starts = numpy.empty(len(groups) + 1, 'int32')
-
-  for i in range(len(groups)):
-    if groups[i] == current_group == 0:
-      starts[ngroups] = i
-      ngroups += 1
-    elif groups[i] == current_group:
-      pass
-    else:
-      starts[ngroups] = i
-      ngroups += 1
-      current_group = groups[i]
-  starts[ngroups] = len(groups)
-  starts = starts[:ngroups+1].copy()
-
-  return starts
