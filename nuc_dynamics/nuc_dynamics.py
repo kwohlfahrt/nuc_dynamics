@@ -429,7 +429,6 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
                        geomspace, linspace, arctan, full, zeros, dtype, ascontiguousarray)
     from math import log, exp, atan, pi
     from functools import partial
-    import gc
 
     bead_size = particle_size ** (1/3)
 
@@ -576,8 +575,6 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
 
     for model_coords_buf in model_coords_bufs: # For each repeat calculation
       for temp, repulse in zip(temps, repulses):
-        gc.collect() # Try to free some memory
-
         # Update coordinates for this temp
         dt = runDynamics(
           ctx, cq, kernels,
