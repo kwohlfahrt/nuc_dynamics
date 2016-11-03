@@ -1,4 +1,19 @@
 import numpy as np
+import pyopencl as cl
+import pytest
+
+@pytest.fixture
+def ctx():
+    return cl.create_some_context()
+
+@pytest.fixture
+def cq(ctx):
+    return cl.CommandQueue(ctx)
+
+@pytest.fixture
+def kernels(ctx):
+    from nuc_dynamics.nuc_dynamics import compile_kernels
+    return compile_kernels(ctx)
 
 def test_get_temp():
     from nuc_dynamics.nuc_cython import getTemp
@@ -25,9 +40,7 @@ def test_get_stats():
     assert values == (31, 0.721443286736486)
 
 
-def test_restraint_force():
-    from nuc_dynamics.nuc_cython import getRestraintForce
-
+def test_restraint_force(ctx, cq, kernels):
     # Forces are repulsive 0-1, zero 1-2, attractive 2-3, asymptotic 3+
     coords = np.array([
         [0.0, 0.0, 0.0],
@@ -42,12 +55,29 @@ def test_restraint_force():
     ], dtype='int32')
     weights = np.ones(len(indices), dtype='float64')
     forces = np.zeros(coords.shape, dtype='float64')
-    limits = np.broadcast_to([[1.0, 2.0]], (len(indices), 2)).astype('float64')
+    limits = np.ascontiguousarray(
+        np.broadcast_to([[1.0, 2.0]], (len(indices), 2)).astype('float64')
+    )
     ambig = np.arange(len(indices) + 1, dtype='int32')
-
     forces = np.zeros(coords.shape, dtype='float64')
-    getRestraintForce(
-        forces, coords, indices, limits, weights, ambig, fConst=1.0, exponent=1.0
+
+    coords_buf = cl.Buffer(ctx, cl.mem_flags.COPY_HOST_PTR, hostbuf=coords)
+    indices_buf = cl.Buffer(ctx, cl.mem_flags.COPY_HOST_PTR, hostbuf=indices)
+    weights_buf = cl.Buffer(ctx, cl.mem_flags.COPY_HOST_PTR, hostbuf=weights)
+    forces_buf = cl.Buffer(ctx, cl.mem_flags.COPY_HOST_PTR, hostbuf=forces)
+    limits_buf = cl.Buffer(ctx, cl.mem_flags.COPY_HOST_PTR, hostbuf=limits)
+    ambig_buf = cl.Buffer(ctx, cl.mem_flags.COPY_HOST_PTR, hostbuf=ambig)
+
+    e = kernels['getRestraintForce'](
+        cq, (len(ambig) - 1,), None,
+        indices_buf, limits_buf, weights_buf, ambig_buf, coords_buf, forces_buf,
+        1.0, 1.0, 0.5, 1.0
+    )
+
+    (forces, _) = cl.enqueue_map_buffer(
+        cq, forces_buf, cl.map_flags.READ,
+        0, forces.shape, np.dtype('float64'),
+        wait_for=[e], is_blocking=True,
     )
     expected = np.array([
         [0.0, 0.0, 0.0],

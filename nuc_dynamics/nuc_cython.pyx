@@ -69,99 +69,6 @@ def getStats(ndarray[int,   ndim=2] restIndices,
   return nViol, sqrt(s/nRest)
 
 
-cpdef double getRestraintForce(ndarray[double, ndim=2] forces,
-                              ndarray[double, ndim=2] coords,
-                              ndarray[int,   ndim=2] restIndices,
-                              ndarray[double, ndim=2] restLimits,
-                              ndarray[double, ndim=1] restWeight,
-                              ndarray[int, ndim=1] restAmbig,
-                              double fConst, double exponent=2.0,
-                              double switchRatio=0.5, double asymptote=1.0):
-
-  cdef int i, j, k, n, m, nAmbig
-  cdef double a, b, d, dmin, dmax, dx, dy, dz, distSwitch
-  cdef double r, r2, s2, rjk, ujk, force = 0, t
-
-  for m in range(len(restAmbig) - 1):
-    nAmbig = restAmbig[m+1] - restAmbig[m]
-    i = restAmbig[m]
-    r2 = 0.0
-
-    for n in range(nAmbig):
-      j = restIndices[i+n,0]
-      k = restIndices[i+n,1]
-
-      if j == k:
-        continue
-
-      dx = coords[j,0] - coords[k,0]
-      dy = coords[j,1] - coords[k,1]
-      dz = coords[j,2] - coords[k,2]
-      r = dx*dx + dy*dy + dz*dz
-      r2 += 1.0 / (r * r)
-
-    if r2 <= 0:
-      continue
-
-    r2 = 1.0 / sqrt(r2)
-
-    dmin = restLimits[i,0]
-    dmax = restLimits[i,1]
-    distSwitch = dmax * switchRatio
-
-    if r2 < dmin*dmin:
-      r2 = max(r2, 1e-8)
-      d = dmin - sqrt(r2)
-      ujk = fConst * d * d
-      rjk = fConst * exponent * d
-
-    elif dmin*dmin <= r2 <= dmax*dmax:
-      ujk = rjk = 0
-      r = 1.0
-
-    elif dmax*dmax < r2 <= (dmax+distSwitch) * (dmax+distSwitch):
-      d = sqrt(r2) - dmax
-      ujk = fConst * d * d
-      rjk = - fConst * exponent * d
-
-    else: # (dmax+distSwitch) ** 2 < r2
-      b = distSwitch * distSwitch * distSwitch * exponent * (asymptote - 1)
-      a = distSwitch * distSwitch * (1 - 2*asymptote*exponent + exponent)
-
-      d = sqrt(r2) - dmax
-      ujk = fConst * (a + asymptote*distSwitch*exponent*d + b/d)
-      rjk = - fConst * (asymptote*distSwitch*exponent - b/(d*d))
-
-    force += ujk
-
-    for n in range(nAmbig):
-      j = restIndices[i+n,0]
-      k = restIndices[i+n,1]
-
-      if j == k:
-        continue
-
-      dx = coords[j,0] - coords[k,0]
-      dy = coords[j,1] - coords[k,1]
-      dz = coords[j,2] - coords[k,2]
-
-      s2 = max(dx*dx + dy*dy + dz*dz, 1e-08)
-      t = rjk * pow(r2, 2.5) / (s2 * s2 * s2) * restWeight[i+n]
-
-      dx *= t
-      dy *= t
-      dz *= t
-
-      forces[j,0] += dx
-      forces[k,0] -= dx
-      forces[j,1] += dy
-      forces[k,1] -= dy
-      forces[j,2] += dz
-      forces[k,2] -= dz
-
-  return force
-
-
 def runDynamics(ctx, cq, kernels,
                 coords_buf, masses_buf, radii_buf, repDists_buf, int nCoords,
                 restIndices_buf, restLimits_buf, restWeights_buf, int nRest,
@@ -182,10 +89,6 @@ def runDynamics(ctx, cq, kernels,
   tStep0 = tStep * tot0
   beta /= tot0
 
-  (coords, _) = cl.enqueue_map_buffer(
-    cq, coords_buf, cl.map_flags.READ,
-    0, (nCoords, 3), dtype('float64'), is_blocking=False
-  )
   (masses, _) = cl.enqueue_map_buffer(
     cq, masses_buf, cl.map_flags.READ,
     0, nCoords, dtype('float64'), is_blocking=False
@@ -198,13 +101,21 @@ def runDynamics(ctx, cq, kernels,
     cq, repDists_buf, cl.map_flags.READ,
     0, nCoords, dtype('float64'), is_blocking=False
   )
+  (restLimits, _) = cl.enqueue_map_buffer(
+    cq, restLimits_buf, cl.map_flags.READ,
+    0, (nRest, 2), dtype('float64'), is_blocking=False
+  )
+  (restIndices, _) = cl.enqueue_map_buffer(
+    cq, restIndices_buf, cl.map_flags.READ,
+    0, (nRest, 2), dtype('int32'), is_blocking=False
+  )
 
   accel_buf = cl.Buffer(
     ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_WRITE,
     nCoords * 3 * dtype('double').itemsize
   )
   forces_buf = cl.Buffer(
-    ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+    ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_WRITE,
     nCoords * 3 * dtype('double').itemsize
   )
   veloc_buf = cl.Buffer(
@@ -295,28 +206,12 @@ def runDynamics(ctx, cq, kernels,
     cq, (nRep,), None,
     repList_buf, forces_buf, coords_buf, radii_buf, fConstR,
   )
-  (restAmbig, _) = cl.enqueue_map_buffer(
-    cq, restAmbig_buf, cl.map_flags.READ,
-    0, nAmbig, dtype('int32'), wait_for=[e], is_blocking=False
+  e = kernels['getRestraintForce'](
+    cq, (nAmbig-1,), None,
+    restIndices_buf, restLimits_buf, restWeights_buf, restAmbig_buf,
+    coords_buf, forces_buf, fConstD, 2.0, 0.5, 1.0
   )
-  (restWeight, _) = cl.enqueue_map_buffer(
-    cq, restWeights_buf, cl.map_flags.READ,
-    0, nRest, dtype('float64'), wait_for=[e], is_blocking=False
-  )
-  (restLimits, _) = cl.enqueue_map_buffer(
-    cq, restLimits_buf, cl.map_flags.READ,
-    0, (nRest, 2), dtype('float64'), wait_for=[e], is_blocking=False
-  )
-  (restIndices, _) = cl.enqueue_map_buffer(
-    cq, restIndices_buf, cl.map_flags.READ,
-    0, (nRest, 2), dtype('int32'), wait_for=[e], is_blocking=False
-  )
-  (forces, _) = cl.enqueue_map_buffer(
-    cq, forces_buf, cl.map_flags.READ | cl.map_flags.WRITE,
-    0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=True
-  )
-  fDist = getRestraintForce(forces, coords, restIndices, restLimits,
-                            restWeight, restAmbig, fConstD)
+  cl.wait_for_events([cl.enqueue_barrier(cq)])
 
   for step in range(nSteps):
     e = cl.enqueue_fill_buffer(
@@ -382,7 +277,7 @@ def runDynamics(ctx, cq, kernels,
     del recalcRep
 
     r = beta * (tRef / max(getTemp(masses, veloc, nCoords), 0.001) - 1.0)
-    del coords, veloc, forces
+    del veloc
 
     e = kernels['updateMotion'](
       cq, (nCoords,), None,
@@ -401,32 +296,22 @@ def runDynamics(ctx, cq, kernels,
       repList_buf, forces_buf, coords_buf, radii_buf, fConstR,
       wait_for=[e]
     )
-
-    (coords, _) = cl.enqueue_map_buffer(
-      cq, coords_buf, cl.map_flags.READ,
-      0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
-    )
-    (forces, _) = cl.enqueue_map_buffer(
-      cq, forces_buf, cl.map_flags.READ | cl.map_flags.WRITE,
-      0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
+    e = kernels['getRestraintForce'](
+      cq, (nAmbig-1,), None,
+      restIndices_buf, restLimits_buf, restWeights_buf, restAmbig_buf,
+      coords_buf, forces_buf, fConstD, 2.0, 0.5, 1.0,
+      wait_for=[e]
     )
     cl.wait_for_events([cl.enqueue_barrier(cq)])
 
-    fDist = getRestraintForce(forces, coords, restIndices, restLimits,
-                              restWeight, restAmbig, fConstD)
-
     r = beta * (tRef / max(getTemp(masses, veloc, nCoords), 0.001) - 1.0)
-    del veloc, forces
+    del veloc
 
     e = kernels['updateVelocity'](
       cq, (nCoords,), None,
       veloc_buf, masses_buf, forces_buf, accel_buf, tStep0, r,
     )
 
-    (forces, _) = cl.enqueue_map_buffer(
-      cq, forces_buf, cl.map_flags.READ | cl.map_flags.WRITE,
-      0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
-    )
     (veloc, _) = cl.enqueue_map_buffer(
       cq, veloc_buf, cl.map_flags.READ,
       0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
@@ -435,10 +320,16 @@ def runDynamics(ctx, cq, kernels,
 
     if (printInterval > 0) and step % printInterval == 0:
       temp = getTemp(masses, veloc, nCoords)
+      (coords, _) = cl.enqueue_map_buffer(
+        cq, coords_buf, cl.map_flags.READ,
+        0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
+      )
+      cl.wait_for_events([cl.enqueue_barrier(cq)])
       nViol, rmsd = getStats(restIndices, restLimits, coords, nRest)
+      del coords
 
-      data = (temp, fDist, rmsd, nViol, nRep[0])
-      print('temp:%7.2lf  fDist:%7.2lf  rmsd:%7.2lf  nViol:%5d  nRep:%5d' % data)
+      data = (temp, rmsd, nViol, nRep[0])
+      print('temp:%7.2lf  rmsd:%7.2lf  nViol:%5d  nRep:%5d' % data)
 
     tTaken += tStep
 

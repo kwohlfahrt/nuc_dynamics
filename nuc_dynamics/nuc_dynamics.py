@@ -1,5 +1,6 @@
 from pathlib import Path
 from numpy import dtype
+import pyopencl as cl
 
 from .nuc_cython import runDynamics
 
@@ -429,7 +430,6 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
     from math import log, exp, atan, pi
     from functools import partial
     import gc
-    import pyopencl as cl
 
     bead_size = particle_size ** (1/3)
 
@@ -641,36 +641,43 @@ def hierarchical_annealing(ctx, cq, kernels, start_coords, contacts, images,
     return coords_dict, particle_seq_pos, restraint_dict
 
 
+def compile_kernels(ctx):
+  from numpy import float64, int32
+
+  with (Path(__file__).parent / "kernels.cl").open() as f:
+    program = cl.Program(ctx, f.read()).build()
+  kernels = ['updateVelocity', 'updateMotion', 'getRepulsiveForce', 'getRepulsionList',
+              'testDelta', 'getRestraintForce']
+  kernels = {name: getattr(program, name) for name in kernels}
+  kernels['updateVelocity'].set_scalar_arg_dtypes(
+    [None, None, None, None, float64, float64]
+  )
+  kernels['updateMotion'].set_scalar_arg_dtypes(
+    [None, None, None, None, None, float64, float64]
+  )
+  kernels['getRepulsiveForce'].set_scalar_arg_dtypes(
+    [None, None, None, None, float64]
+  )
+  kernels['getRepulsionList'].set_scalar_arg_dtypes(
+    [None, None, None, None, None, None, int32]
+  )
+  kernels['testDelta'].set_scalar_arg_dtypes(
+    [None, None, None, None]
+  )
+  kernels['getRestraintForce'].set_scalar_arg_dtypes(
+    [None, None, None, None, None, None, float64, float64, float64, float64]
+  )
+  return kernels
+
+
 def main(args=None):
     from argparse import ArgumentParser
     from sys import argv
     from numpy import concatenate, array
-    import numpy as np
-
-    import pyopencl as cl
 
     ctx = cl.create_some_context()
     cq = cl.CommandQueue(ctx)
-    with (Path(__file__).parent / "kernels.cl").open() as f:
-      program = cl.Program(ctx, f.read()).build()
-      kernels = ['updateVelocity', 'updateMotion', 'getRepulsiveForce', 'getRepulsionList',
-                 'testDelta']
-      kernels = {name: getattr(program, name) for name in kernels}
-      kernels['updateVelocity'].set_scalar_arg_dtypes(
-        [None, None, None, None, np.float64, np.float64]
-      )
-      kernels['updateMotion'].set_scalar_arg_dtypes(
-        [None, None, None, None, None, np.float64, np.float64]
-      )
-      kernels['getRepulsiveForce'].set_scalar_arg_dtypes(
-        [None, None, None, None, np.float64]
-      )
-      kernels['getRepulsionList'].set_scalar_arg_dtypes(
-        [None, None, None, None, None, None, np.int32]
-      )
-      kernels['testDelta'].set_scalar_arg_dtypes(
-        [None, None, None, None]
-      )
+    kernels = compile_kernels(ctx)
 
     parser = ArgumentParser(description="Calculate a structure from a contact file.")
     parser.add_argument("contacts", type=Path, nargs='+',
