@@ -53,11 +53,14 @@ kernel void getRepulsiveForce(global const int * const repList,
                               global double * const forces,
                               global const double * const coords,
                               global const double * const radii,
+                              global const double * const masses,
                               const double fConst) {
     const size_t i = get_global_id(0);
 
     const int j = repList[i*2+0];
     const int k = repList[i*2+1];
+    if (isinf(masses[j]) || isinf(masses[k]))
+        return;
     const double repDist = radii[j] + radii[k];
     const double repDist2 = repDist * repDist;
 
@@ -153,16 +156,12 @@ kernel void getRepulsionList(global int * const repList,
                              global const double * const coords,
                              global const double * const radii,
                              global const double * const repDists,
-                             global const double * const masses,
                              global int * const next, const int nRepMax) {
     const size_t i = get_global_id(0);
     const size_t j = get_global_id(1);
 
     // Inefficient, do proper rect -> tri mapping
     if (j < (i + 2))
-        return;
-
-    if (isinf(masses[i]) || isinf(masses[j]))
         return;
 
     const double distLim = repDists[i] + radii[i] + repDists[j] + radii[j];

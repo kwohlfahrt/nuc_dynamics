@@ -175,7 +175,7 @@ def runDynamics(ctx, cq, kernels,
   )
   e = kernels['getRepulsionList'](
     cq, (nCoords-2, nCoords-2), None,
-    None, coords_buf, radii_buf, repDists_buf, masses_buf, nRep_buf, 0,
+    None, coords_buf, radii_buf, repDists_buf, nRep_buf, 0,
     global_offset=(0, 2), wait_for=[e]
   )
   (nRep, _) = cl.enqueue_map_buffer(
@@ -193,7 +193,7 @@ def runDynamics(ctx, cq, kernels,
   )
   e = kernels['getRepulsionList'](
     cq, (nCoords-2, nCoords-2), None,
-    repList_buf, coords_buf, radii_buf, repDists_buf, masses_buf, nRep_buf, nRepMax,
+    repList_buf, coords_buf, radii_buf, repDists_buf, nRep_buf, nRepMax,
     global_offset=(0, 2), wait_for=[e]
   )
   (nRep, _) = cl.enqueue_map_buffer(
@@ -204,7 +204,7 @@ def runDynamics(ctx, cq, kernels,
 
   e = kernels['getRepulsiveForce'](
     cq, (nRep,), None,
-    repList_buf, forces_buf, coords_buf, radii_buf, fConstR,
+    repList_buf, forces_buf, coords_buf, radii_buf, masses_buf, fConstR,
   )
   e = kernels['getRestraintForce'](
     cq, (nAmbig-1,), None,
@@ -234,7 +234,7 @@ def runDynamics(ctx, cq, kernels,
       )
       e = kernels['getRepulsionList'](
         cq, (nCoords-2, nCoords-2), None,
-        repList_buf, coords_buf, radii_buf, repDists_buf, masses_buf, nRep_buf, nRepMax,
+        repList_buf, coords_buf, radii_buf, repDists_buf, nRep_buf, nRepMax,
         global_offset=(0, 2), wait_for=[e]
       )
       (nRep, _) = cl.enqueue_map_buffer(
@@ -253,7 +253,7 @@ def runDynamics(ctx, cq, kernels,
         )
         e = kernels['getRepulsionList'](
           cq, (nCoords-2, nCoords-2), None,
-          repList_buf, coords_buf, radii_buf, repDists_buf, masses_buf, nRep_buf, nRepMax,
+          repList_buf, coords_buf, radii_buf, repDists_buf, nRep_buf, nRepMax,
           global_offset=(0, 2), wait_for=[e]
         )
         (nRep, _) = cl.enqueue_map_buffer(
@@ -293,7 +293,7 @@ def runDynamics(ctx, cq, kernels,
     )
     e = kernels['getRepulsiveForce'](
       cq, (nRep,), None,
-      repList_buf, forces_buf, coords_buf, radii_buf, fConstR,
+      repList_buf, forces_buf, coords_buf, radii_buf, masses_buf, fConstR,
       wait_for=[e]
     )
     e = kernels['getRestraintForce'](

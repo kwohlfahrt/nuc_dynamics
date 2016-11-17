@@ -653,10 +653,10 @@ def compile_kernels(ctx):
     [None, None, None, None, None, float64, float64]
   )
   kernels['getRepulsiveForce'].set_scalar_arg_dtypes(
-    [None, None, None, None, float64]
+    [None, None, None, None, None, float64]
   )
   kernels['getRepulsionList'].set_scalar_arg_dtypes(
-    [None, None, None, None, None, None, int32]
+    [None, None, None, None, None, int32]
   )
   kernels['testDelta'].set_scalar_arg_dtypes(
     [None, None, None, None]
