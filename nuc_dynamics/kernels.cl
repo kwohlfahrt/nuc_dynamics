@@ -152,34 +152,6 @@ kernel void getRestraintForce(global const int * const restIndices,
     }
 }
 
-kernel void getRepulsionList(global int * const repList,
-                             global const double * const coords,
-                             global const double * const radii,
-                             global const double * const repDists,
-                             global int * const next, const int nRepMax) {
-    const size_t i = get_global_id(0);
-    const size_t j = get_global_id(1);
-
-    // Inefficient, do proper rect -> tri mapping
-    if (j < (i + 2))
-        return;
-
-    const double distLim = repDists[i] + radii[i] + repDists[j] + radii[j];
-
-    const double3 dist = vload3(i, coords) - vload3(j, coords);
-    if (any(fabs(dist) > distLim))
-        return;
-    const double dist2 = dot(dist, dist);
-    if (dist2 > (distLim * distLim))
-        return;
-
-    const size_t n = atomic_inc(next);
-    if (n >= nRepMax)
-        return;
-
-    vstore2((int2)(i, j), n, repList);
-}
-
 kernel void testDelta(global const double * const coords,
                       global const double * const coordsPrev,
                       global const double * const deltaLims,

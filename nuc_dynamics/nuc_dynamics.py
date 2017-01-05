@@ -429,6 +429,7 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
                        geomspace, linspace, arctan, full, zeros, dtype, ascontiguousarray)
     from math import log, exp, atan, pi
     from functools import partial
+    from collision.collision import Collider
 
     bead_size = particle_size ** (1/3)
 
@@ -489,7 +490,7 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
              for chr, pos in seq_pos_dict.items()}
     # No collisions, so radii don't matter
     radii.update({img: zeros(coords[img].shape[1], dtype='float') for img in images})
-    repDists = {chr: r * 0.75 for chr, r in radii.items()}
+    repDists = {chr: r * 1.75 for chr, r in radii.items()}
 
     # Concatenate chromosomal data into a single array of particle restraints
     # for structure calculation.
@@ -573,11 +574,13 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
     # Update coordinates in the annealing schedule
     time_taken = 0.0
 
+    collider = Collider(ctx, n_particles, 16, 64, coord_dtype='float64')
+
     for model_coords_buf in model_coords_bufs: # For each repeat calculation
       for temp, repulse in zip(temps, repulses):
         # Update coordinates for this temp
         dt = runDynamics(
-          ctx, cq, kernels,
+          ctx, cq, kernels, collider,
           model_coords_buf, masses_buf, radii_buf, repDists_buf, n_particles,
           rest_indices_buf, rest_limits_buf, rest_weights_buf, len(restraints),
           ambiguity_buf, len(ambiguity),
@@ -643,7 +646,7 @@ def compile_kernels(ctx):
 
   with (Path(__file__).parent / "kernels.cl").open() as f:
     program = cl.Program(ctx, f.read()).build()
-  kernels = ['updateVelocity', 'updateMotion', 'getRepulsiveForce', 'getRepulsionList',
+  kernels = ['updateVelocity', 'updateMotion', 'getRepulsiveForce',
               'testDelta', 'getRestraintForce']
   kernels = {name: getattr(program, name) for name in kernels}
   kernels['updateVelocity'].set_scalar_arg_dtypes(
@@ -654,9 +657,6 @@ def compile_kernels(ctx):
   )
   kernels['getRepulsiveForce'].set_scalar_arg_dtypes(
     [None, None, None, None, None, float64]
-  )
-  kernels['getRepulsionList'].set_scalar_arg_dtypes(
-    [None, None, None, None, None, int32]
   )
   kernels['testDelta'].set_scalar_arg_dtypes(
     [None, None, None, None]

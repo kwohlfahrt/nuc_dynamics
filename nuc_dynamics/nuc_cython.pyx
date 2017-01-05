@@ -69,7 +69,7 @@ def getStats(ndarray[int,   ndim=2] restIndices,
   return nViol, sqrt(s/nRest)
 
 
-def runDynamics(ctx, cq, kernels,
+def runDynamics(ctx, cq, kernels, collider,
                 coords_buf, masses_buf, radii_buf, repDists_buf, int nCoords,
                 restIndices_buf, restLimits_buf, restWeights_buf, int nRest,
                 restAmbig_buf, int nAmbig,
@@ -158,7 +158,7 @@ def runDynamics(ctx, cq, kernels,
   )
   cl.wait_for_events([cl.enqueue_barrier(cq)])
 
-  deltaLim[...] = repDists * repDists
+  deltaLim[...] = (repDists - radii) ** 2
   del deltaLim
 
   veloc[...] = numpy.random.normal(0.0, 1.0, (nCoords, 3))
@@ -170,14 +170,7 @@ def runDynamics(ctx, cq, kernels,
   cdef double t0 = time.time()
   cdef double r # for use as kernel parameter
 
-  e = cl.enqueue_fill_buffer(
-    cq, nRep_buf, numpy.zeros(1, dtype='int32'), 0, dtype('int32').itemsize
-  )
-  e = kernels['getRepulsionList'](
-    cq, (nCoords-2, nCoords-2), None,
-    None, coords_buf, radii_buf, repDists_buf, nRep_buf, 0,
-    global_offset=(0, 2), wait_for=[e]
-  )
+  e = collider.get_collisions(cq, coords_buf, repDists_buf, nRep_buf, None, 0)
   (nRep, _) = cl.enqueue_map_buffer(
     cq, nRep_buf, cl.map_flags.READ,
     0, 1, dtype('int32'), wait_for=[e], is_blocking=True,
@@ -188,13 +181,8 @@ def runDynamics(ctx, cq, kernels,
     ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_WRITE,
     nRepMax * 2 * dtype('int32').itemsize
   )
-  e = cl.enqueue_fill_buffer(
-    cq, nRep_buf, numpy.zeros(1, dtype='int32'), 0, dtype('int32').itemsize
-  )
-  e = kernels['getRepulsionList'](
-    cq, (nCoords-2, nCoords-2), None,
-    repList_buf, coords_buf, radii_buf, repDists_buf, nRep_buf, nRepMax,
-    global_offset=(0, 2), wait_for=[e]
+  e = collider.get_collisions(
+    cq, coords_buf, repDists_buf, nRep_buf, repList_buf, nRepMax, [e]
   )
   (nRep, _) = cl.enqueue_map_buffer(
     cq, nRep_buf, cl.map_flags.READ,
@@ -229,13 +217,8 @@ def runDynamics(ctx, cq, kernels,
 
     if recalcRep[0]:
       del nRep
-      e = cl.enqueue_fill_buffer(
-        cq, nRep_buf, numpy.zeros(1, dtype='int32'), 0, dtype('int32').itemsize
-      )
-      e = kernels['getRepulsionList'](
-        cq, (nCoords-2, nCoords-2), None,
-        repList_buf, coords_buf, radii_buf, repDists_buf, nRep_buf, nRepMax,
-        global_offset=(0, 2), wait_for=[e]
+      e = collider.get_collisions(
+        cq, coords_buf, repDists_buf, nRep_buf, repList_buf, nRepMax, [e]
       )
       (nRep, _) = cl.enqueue_map_buffer(
         cq, nRep_buf, cl.map_flags.READ,
@@ -245,16 +228,11 @@ def runDynamics(ctx, cq, kernels,
         nRepMax = int(nRep[0] * 1.2)
         del nRep
         repList_buf = cl.Buffer(
-          ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+          ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_WRITE,
           nRepMax * 2 * dtype('int32').itemsize
         )
-        e = cl.enqueue_fill_buffer(
-          cq, nRep_buf, numpy.zeros(1, dtype='int32'), 0, dtype('int32').itemsize
-        )
-        e = kernels['getRepulsionList'](
-          cq, (nCoords-2, nCoords-2), None,
-          repList_buf, coords_buf, radii_buf, repDists_buf, nRep_buf, nRepMax,
-          global_offset=(0, 2), wait_for=[e]
+        e = collider.get_collisions(
+          cq, coords_buf, repDists_buf, nRep_buf, repList_buf, nRepMax, [e]
         )
         (nRep, _) = cl.enqueue_map_buffer(
           cq, nRep_buf, cl.map_flags.READ,
