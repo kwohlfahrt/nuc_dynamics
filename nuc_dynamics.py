@@ -359,8 +359,7 @@ def anneal_genome(contact_dict, num_models, particle_size,
     chromosomes = sorted(seq_pos_dict)
 
     # Calculate distance restrains from contact data
-    restraint_dict = calc_restraints(contact_dict, seq_pos_dict, particle_size,
-                                     scale=1.0, exponent=general_calc_params['dist_power_law'],
+    restraint_dict = calc_restraints(contact_dict, seq_pos_dict, particle_size, scale=1.0,
                                      lower=general_calc_params['contact_dist_lower'],
                                      upper=general_calc_params['contact_dist_upper'])
 
@@ -453,8 +452,7 @@ if __name__ == "__main__":
     num_models = 2
 
     # Parameters to setup restraints and starting coords
-    general_calc_params = {'dist_power_law':-0.33,
-                          'contact_dist_lower':0.8, 'contact_dist_upper':1.2,
+    general_calc_params = {'contact_dist_lower':0.8, 'contact_dist_upper':1.2,
                           'backbone_dist_lower':0.1, 'backbone_dist_upper':1.1,
                           'random_seed':int(time()), 'random_radius':10.0}
 
