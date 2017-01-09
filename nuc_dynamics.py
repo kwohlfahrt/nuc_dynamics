@@ -436,22 +436,7 @@ def anneal_genome(contact_dict, num_models, particle_size,
     return coords_dict, seq_pos_dict
 
 
-if __name__ == "__main__":
-    from time import time
-
-    # Number of alternative conformations to generate from repeat calculations
-    # with different random starting coordinates
-    num_models = 2
-
-    # Hierarchical scale protocol
-    particle_sizes = [8e6, 4e6, 2e6, 4e5, 2e5, 1e5]
-
-    # Load single-cell Hi-C data from NCC contact file, as output from NucProcess
-    contact_dict = load_ncc_file('example_chromo_data/P36D6.ncc')
-
-    # Only use contacts which are supported by others nearby in sequence, in the initial instance
-    contact_dict = remove_isolated_contacts(contact_dict, threshold=2e6)
-
+def hierarchical_annealing(contacts, particle_sizes, num_models=1, *args, **kwargs):
     # Initial coords will be random
     start_coords = None
 
@@ -466,20 +451,15 @@ if __name__ == "__main__":
         # Can remove large violations (noise contacts inconsistent with structure)
         # once we have a resonable resolution structure
         if stage == 4:
-            remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos,
-                                    particle_size, threshold=6.0)
+            remove_violated_contacts(contacts, coords_dict, particle_seq_pos,
+                                     particle_size, threshold=6.0)
         elif stage == 5:
-            remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos,
-                                    particle_size, threshold=5.0)
+            remove_violated_contacts(contacts, coords_dict, particle_seq_pos,
+                                     particle_size, threshold=5.0)
 
         coords_dict, particle_seq_pos = anneal_genome(
-          contact_dict, num_models, particle_size, prev_seq_pos, start_coords,
-          contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
-          # Cautious annealing parameters
-          # Don' need to be fixed, but are for simplicity
-          temp_range=(5000.0, 10.0), temp_steps=500, dynamics_steps=100, time_step=0.001,
-          # To set up starting coords
-          random_seed=None, random_radius=10.0,
+          contacts, num_models, particle_size, prev_seq_pos, start_coords,
+          *args, **kwargs
         )
 
         # Next stage based on previous stage's 3D coords
@@ -487,7 +467,29 @@ if __name__ == "__main__":
         start_coords = coords_dict
         prev_seq_pos = particle_seq_pos
 
+    return coords_dict, particle_seq_pos
+
+
+if __name__ == "__main__":
+    # Hierarchical scale protocol
+    particle_sizes = [8e6, 4e6, 2e6, 4e5, 2e5, 1e5]
+
+    # Load single-cell Hi-C data from NCC contact file, as output from NucProcess
+    contact_dict = load_ncc_file('example_chromo_data/P36D6.ncc')
+    # Only use contacts which are supported by others nearby in sequence, in the initial instance
+    contact_dict = remove_isolated_contacts(contact_dict, threshold=2e6)
+
+    coords, seq_pos = hierarchical_annealing(
+        contact_dict, particle_sizes, num_models=2,
+        contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
+        # Cautious annealing parameters
+        # Don' need to be fixed, but are for simplicity
+        temp_range=(5000.0, 10.0), temp_steps=500, dynamics_steps=100, time_step=0.001,
+        # To set up starting coords
+        random_seed=None, random_radius=10.0,
+    )
+
     # Save final coords as PDB format file
     save_path = 'example_chromo_data/P36D6.pdb'
-    export_pdb_coords(save_path, coords_dict, particle_seq_pos, particle_size)
+    export_pdb_coords(save_path, coords, seq_pos, particle_sizes[-1])
     print('Saved structure file to: %s' % save_path)
