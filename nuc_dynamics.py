@@ -202,17 +202,18 @@ def remove_isolated_contacts(contact_dict, threshold=int(2e6)):
   contact, for the same chromosome pair
   """
   from numpy import array, int32
+  from collections import defaultdict
+  new_contacts = defaultdict(dict)
 
   for chromoA in contact_dict:
-    for chromoB in contact_dict[chromoA]:
-      contacts = contact_dict[chromoA][chromoB]
+    for chromoB, contacts in contact_dict[chromoA].items():
       positions = array(contacts[:2], int32).T
 
       if len(positions): # Sometimes empty e.g. for MT, Y chromos
         active_idx = getSupportedPairs(positions, int32(threshold))
-        contact_dict[chromoA][chromoB] = contacts[:,active_idx]
+        new_contacts[chromoA][chromoB] = contacts[:,active_idx]
 
-  return contact_dict
+  return dict(new_contacts)
 
 
 def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, particle_size, threshold=5.0):
@@ -449,7 +450,7 @@ if __name__ == "__main__":
     contact_dict = load_ncc_file('example_chromo_data/P36D6.ncc')
 
     # Only use contacts which are supported by others nearby in sequence, in the initial instance
-    remove_isolated_contacts(contact_dict, threshold=2e6)
+    contact_dict = remove_isolated_contacts(contact_dict, threshold=2e6)
 
     # Initial coords will be random
     start_coords = None
