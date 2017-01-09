@@ -470,26 +470,56 @@ def hierarchical_annealing(contacts, particle_sizes, num_models=1, *args, **kwar
     return coords_dict, particle_seq_pos
 
 
-if __name__ == "__main__":
-    # Hierarchical scale protocol
-    particle_sizes = [8e6, 4e6, 2e6, 4e5, 2e5, 1e5]
+def main(args=None):
+    from argparse import ArgumentParser
+    from sys import argv
+    from pathlib import Path
 
-    # Load single-cell Hi-C data from NCC contact file, as output from NucProcess
-    contact_dict = load_ncc_file('example_chromo_data/P36D6.ncc')
-    # Only use contacts which are supported by others nearby in sequence, in the initial instance
-    contact_dict = remove_isolated_contacts(contact_dict, threshold=2e6)
+    parser = ArgumentParser(description="Calculate a structure from a contact file.")
+    parser.add_argument("contacts", type=Path, help="The .ncc file to load contacts from")
+    parser.add_argument("output", type=Path, help="The .pdb file to save the structure in")
+    parser.add_argument("--isolated-threshold", type=float, default=2e6,
+                        help="The distance threshold for isolated contacts")
+    parser.add_argument("--particle-sizes", type=float, nargs='+',
+                        default=[8e6, 4e6, 2e6, 4e5, 2e5, 1e5],
+                        help="The resolutions to calculate structures at")
+    parser.add_argument("--models", type=int, default=1,
+                        help="The number of models to calculate")
+    parser.add_argument("--contact-dist", type=float, nargs=2, default=(0.8, 1.2),
+                        help="The upper and lower contact restraint distances")
+    parser.add_argument("--backbone-dist", type=float, nargs=2, default=(0.1, 1.1),
+                        help="The upper and lower backbone restraint distances")
+    parser.add_argument("--temp-range", type=float, nargs=2, default=(5000.0, 10.0),
+                        help="The range of 'temperatures' to use for the annealing protocol")
+    parser.add_argument("--temp-steps", type=int, default=500,
+                        help="The number of temperature steps for the annealing protocol")
+    parser.add_argument("--dyn-steps", type=int, default=100,
+                        help="The number of dynamics steps for the annealing protocol")
+    parser.add_argument("--time-step", type=float, default=0.001,
+                        help="The time-step for the annealing protocol")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="The random seed for starting coordinates")
+    parser.add_argument("--random-radius", type=float, default=10,
+                        help="The radius for random starting coordinates")
+
+    args = parser.parse_args(argv[1:] if args is None else args)
+    contacts = load_ncc_file(str(args.contacts))
+    contacts = remove_isolated_contacts(contacts, threshold=args.isolated_threshold)
 
     coords, seq_pos = hierarchical_annealing(
-        contact_dict, particle_sizes, num_models=2,
-        contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
+        contacts, args.particle_sizes, args.models,
+        contact_dist=args.contact_dist, backbone_dist=args.backbone_dist,
         # Cautious annealing parameters
         # Don' need to be fixed, but are for simplicity
-        temp_range=(5000.0, 10.0), temp_steps=500, dynamics_steps=100, time_step=0.001,
+        temp_range=args.temp_range, temp_steps=args.temp_steps,
+        dynamics_steps=args.dyn_steps, time_step=args.time_step,
         # To set up starting coords
-        random_seed=None, random_radius=10.0,
+        random_seed=args.seed, random_radius=args.random_radius,
     )
 
     # Save final coords as PDB format file
-    save_path = 'example_chromo_data/P36D6.pdb'
-    export_pdb_coords(save_path, coords, seq_pos, particle_sizes[-1])
-    print('Saved structure file to: %s' % save_path)
+    export_pdb_coords(str(args.output), coords, seq_pos, args.particle_sizes[-1])
+    print('Saved structure file to: %s' % str(args.output))
+
+if __name__ == "__main__":
+    main()

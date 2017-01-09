@@ -1,5 +1,7 @@
 __pycache__
 build
+dist
 *.c
 *.so
 .cache
+*.egg-info
