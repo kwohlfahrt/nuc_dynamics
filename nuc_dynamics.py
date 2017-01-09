@@ -339,8 +339,11 @@ def backbone_restraints(seq_pos, particle_size, lower=0.1, upper=1.1):
 
 
 def anneal_genome(contact_dict, num_models, particle_size,
-                  general_calc_params, anneal_params,
-                  prev_seq_pos_dict=None, start_coords=None):
+                  prev_seq_pos_dict=None, start_coords=None,
+                  contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
+                  temp_range=(5000.0, 10.0), temp_steps=500,
+                  dynamics_steps=100, time_step=0.001,
+                  random_seed=None, random_radius=10.0):
     """
     Use chromosome contact data to generate distance restraints and then
     apply a simulated annealing protocul to generate/refine coordinates.
@@ -353,27 +356,25 @@ def anneal_genome(contact_dict, num_models, particle_size,
     from functools import partial
     import gc
 
-    random.seed(general_calc_params['random_seed'])
+    if random_seed is not None:
+      random.seed(random_seed)
     particle_size = int32(particle_size)
     seq_pos_dict = calc_bins(calc_limits(contact_dict), particle_size)
     chromosomes = sorted(seq_pos_dict)
 
     # Calculate distance restrains from contact data
     restraint_dict = calc_restraints(contact_dict, seq_pos_dict, particle_size, scale=1.0,
-                                     lower=general_calc_params['contact_dist_lower'],
-                                     upper=general_calc_params['contact_dist_upper'])
+                                     lower=contact_dist[0], upper=contact_dist[1])
 
     for chr in chromosomes:
       backbone = backbone_restraints(seq_pos_dict[chr], particle_size,
-                                     general_calc_params['backbone_dist_lower'],
-                                     general_calc_params['backbone_dist_upper'])
+                                     backbone_dist[0], backbone_dist[1])
       restraint_dict[chr][chr] = concatenate([backbone, restraint_dict[chr][chr]])
 
     coords = start_coords or {}
     for chr in chromosomes:
       if chr not in coords:
-        coords[chr] = get_random_coords((num_models, len(seq_pos_dict[chr])),
-                                        general_calc_params['random_radius'])
+        coords[chr] = get_random_coords((num_models, len(seq_pos_dict[chr])), random_radius)
       elif coords[chr].shape[1] != len(seq_pos_dict[chr]):
         coords[chr] = stack([getInterpolatedCoords(coords[chr][i],
                                                    seq_pos_dict[chr],
@@ -396,31 +397,21 @@ def anneal_genome(contact_dict, num_models, particle_size,
     restraint_dists = restraint_dists[restraint_order]
     ambiguity = calc_ambiguity_offsets(ambiguity_groups[restraint_order])
 
-    # Annealing parameters
-    temp_start = anneal_params['temp_start']
-    temp_end = anneal_params['temp_end']
-    temp_steps = anneal_params['temp_steps']
-
     # Setup annealig schedule: setup temps and repulsive terms
     adj = 1.0 / atan(10.0)
-    decay = log(temp_start/temp_end)
+    decay = log(temp_range[0]/temp_range[1])
     anneal_schedule = []
 
     for step in range(temp_steps):
       frac = step/float(temp_steps)
 
       # exponential temp decay
-      temp = temp_start * exp(-decay*frac)
+      temp = temp_range[0] * exp(-decay*frac)
 
       # sigmoidal repusion scheme
       repulse = 0.5 + adj * atan(frac*20.0-10) / pi
 
       anneal_schedule.append((temp, repulse))
-
-    # Paricle dynamics parameters
-    # (these need not be fixed for all stages, but are for simplicity)
-    dyn_steps = anneal_params['dynamics_steps']
-    time_step = anneal_params['time_step']
 
     # Update coordinates in the annealing schedule
     time_taken = 0.0
@@ -431,7 +422,7 @@ def anneal_genome(contact_dict, num_models, particle_size,
 
         # Update coordinates for this temp
         dt = runDynamics(model_coords, masses, radii, restraint_indices, restraint_dists,
-                         ambiguity, temp, time_step, dyn_steps, repulse)
+                         ambiguity, temp, time_step, dynamics_steps, repulse)
 
         time_taken += dt
 
@@ -450,16 +441,6 @@ if __name__ == "__main__":
     # Number of alternative conformations to generate from repeat calculations
     # with different random starting coordinates
     num_models = 2
-
-    # Parameters to setup restraints and starting coords
-    general_calc_params = {'contact_dist_lower':0.8, 'contact_dist_upper':1.2,
-                          'backbone_dist_lower':0.1, 'backbone_dist_upper':1.1,
-                          'random_seed':int(time()), 'random_radius':10.0}
-
-    # Annealing & dyamics parameters: the same for all stages
-    # (this is cautious, but not an absolute requirement)
-    anneal_params = {'temp_start':5000.0, 'temp_end':10.0, 'temp_steps':500,
-                    'dynamics_steps':100, 'time_step':0.001}
 
     # Hierarchical scale protocol
     particle_sizes = [8e6, 4e6, 2e6, 4e5, 2e5, 1e5]
@@ -490,9 +471,15 @@ if __name__ == "__main__":
             remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos,
                                     particle_size, threshold=5.0)
 
-        coords_dict, particle_seq_pos = anneal_genome(contact_dict, num_models, particle_size,
-                                                      general_calc_params, anneal_params,
-                                                      prev_seq_pos, start_coords)
+        coords_dict, particle_seq_pos = anneal_genome(
+          contact_dict, num_models, particle_size, prev_seq_pos, start_coords,
+          contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
+          # Cautious annealing parameters
+          # Don' need to be fixed, but are for simplicity
+          temp_range=(5000.0, 10.0), temp_steps=500, dynamics_steps=100, time_step=0.001,
+          # To set up starting coords
+          random_seed=None, random_radius=10.0,
+        )
 
         # Next stage based on previous stage's 3D coords
         # and thier respective seq. positions
