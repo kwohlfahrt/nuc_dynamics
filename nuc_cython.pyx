@@ -608,10 +608,10 @@ def concatenate_restraints(restraint_dict, pos_dict):
   m = 0
 
   # Add regular restraints for chromo pairs
-  for chr_a in restraint_dict:
+  for chr_a in sorted(restraint_dict):
     start_a = chromo_idx_offset[chr_a] # Offset for chromo A particles
 
-    for chr_b in restraint_dict[chr_a]:
+    for chr_b in sorted(restraint_dict[chr_a]):
       start_b = chromo_idx_offset[chr_b] # Offset for chromo B particles
 
       restraints = restraint_dict[chr_a][chr_b]
