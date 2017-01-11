@@ -221,10 +221,15 @@ def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, partic
   Remove contacts whith structure distances that exceed a given threshold
   """
   from numpy import int32, sqrt, array
+  from collections import defaultdict
+  new_contacts = defaultdict(dict)
 
   for chr_a in contact_dict:
-    for chr_b in contact_dict[chr_a]:
-      contacts = contact_dict[chr_a][chr_b]
+    if chr_a not in coords_dict:
+      continue
+    for chr_b, contacts in contact_dict[chr_a].items():
+      if chr_b not in coords_dict:
+        continue
 
       contact_pos_a = contacts[0].astype(int32)
       contact_pos_b = contacts[1].astype(int32)
@@ -247,9 +252,9 @@ def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, partic
 
       # Select contacts with distances below distance threshold
       indices = (struc_dists < threshold).nonzero()[0]
-      contact_dict[chr_a][chr_b] = contacts[:,indices]
+      new_contacts[chr_a][chr_b] = contacts[:,indices]
 
-  return contact_dict
+  return dict(new_contacts)
 
 
 def get_random_coords(shape, radius=10.0):
