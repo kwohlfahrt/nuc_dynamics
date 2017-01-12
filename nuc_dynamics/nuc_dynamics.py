@@ -1,5 +1,5 @@
-from nuc_cython import (runDynamics, getSupportedPairs, calc_restraints, Restraint,
-                        concatenate_restraints, getInterpolatedCoords)
+from .nuc_cython import (runDynamics, getSupportedPairs, calc_restraints, Restraint,
+                         concatenate_restraints, getInterpolatedCoords)
 
 def load_ncc_file(file_path):
   """Load chromosome and contact data from NCC format file, as output from NucProcess"""
