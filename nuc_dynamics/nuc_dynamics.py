@@ -357,8 +357,9 @@ def anneal_genome(contact_dict, num_models, particle_size,
     resolution) stage.
     """
 
-    from numpy import int32, ones, empty, random, concatenate, stack, argsort
-    from math import log, exp, atan, pi
+    from numpy import (int32, ones, empty, random, concatenate, stack, argsort, geomspace,
+                       linspace, arctan)
+    from math import log, exp, pi
     from functools import partial
     import gc
 
@@ -404,26 +405,14 @@ def anneal_genome(contact_dict, num_models, particle_size,
     ambiguity = calc_ambiguity_offsets(ambiguity_groups[restraint_order])
 
     # Setup annealig schedule: setup temps and repulsive terms
-    adj = 1.0 / atan(10.0)
-    decay = log(temp_range[0]/temp_range[1])
-    anneal_schedule = []
-
-    for step in range(temp_steps):
-      frac = step/float(temp_steps)
-
-      # exponential temp decay
-      temp = temp_range[0] * exp(-decay*frac)
-
-      # sigmoidal repusion scheme
-      repulse = 0.5 + adj * atan(frac*20.0-10) / pi
-
-      anneal_schedule.append((temp, repulse))
+    temps = geomspace(temp_range[0], temp_range[1], temp_steps, endpoint=False)
+    repulses = arctan(linspace(0, 1, temp_steps, endpoint=False) * 20 - 10) / pi / arctan(10) + 0.5
 
     # Update coordinates in the annealing schedule
     time_taken = 0.0
 
     for model_coords in coords: # For each repeat calculation
-      for temp, repulse in anneal_schedule:
+      for temp, repulse in zip(temps, repulses):
         gc.collect() # Try to free some memory
 
         # Update coordinates for this temp
