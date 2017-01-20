@@ -412,6 +412,7 @@ def anneal_genome(contact_dict, num_models, particle_size,
     temps = geomspace(temp_range[0], temp_range[1], temp_steps, endpoint=False)
     temps *= bead_size ** 2
     repulses = arctan(linspace(0, 1, temp_steps, endpoint=False) * 20 - 10) / pi / arctan(10) + 0.5
+    repulses /= bead_size ** 2
 
     # Update coordinates in the annealing schedule
     time_taken = 0.0
