@@ -329,7 +329,7 @@ def calc_ambiguity_offsets(groups):
   return offsets[group_starts]
 
 
-def backbone_restraints(seq_pos, particle_size, lower=0.1, upper=1.1):
+def backbone_restraints(seq_pos, particle_size, scale=1.0, lower=0.1, upper=1.1):
   from numpy import empty, arange, array
 
   restraints = empty(len(seq_pos) - 1, dtype=Restraint)
@@ -337,7 +337,7 @@ def backbone_restraints(seq_pos, particle_size, lower=0.1, upper=1.1):
   restraints['indices'] = arange(len(restraints))[:, None] + offsets
 
   # Normally 1.0 for regular sized particles
-  bounds = array([lower, upper], dtype='float')
+  bounds = array([lower, upper], dtype='float') * scale
   restraints['dists'] = ((seq_pos[1:] - seq_pos[:-1]) / particle_size)[:, None] * bounds
   restraints['ambiguity'] = 0 # Use '0' to represent no ambiguity
 
@@ -358,10 +358,12 @@ def anneal_genome(contact_dict, num_models, particle_size,
     """
 
     from numpy import (int32, ones, empty, random, concatenate, stack, argsort, geomspace,
-                       linspace, arctan)
+                       linspace, arctan, full)
     from math import log, exp, pi
     from functools import partial
     import gc
+
+    bead_size = 1.
 
     if random_seed is not None:
       random.seed(random_seed)
@@ -370,18 +372,19 @@ def anneal_genome(contact_dict, num_models, particle_size,
     chromosomes = sorted(seq_pos_dict)
 
     # Calculate distance restrains from contact data
-    restraint_dict = calc_restraints(contact_dict, seq_pos_dict, particle_size, scale=1.0,
+    restraint_dict = calc_restraints(contact_dict, seq_pos_dict, particle_size, scale=bead_size,
                                      lower=contact_dist[0], upper=contact_dist[1])
 
     for chr in chromosomes:
-      backbone = backbone_restraints(seq_pos_dict[chr], particle_size,
+      backbone = backbone_restraints(seq_pos_dict[chr], particle_size, bead_size,
                                      backbone_dist[0], backbone_dist[1])
       restraint_dict[chr][chr] = concatenate([backbone, restraint_dict[chr][chr]])
 
     coords = start_coords or {}
     for chr in chromosomes:
       if chr not in coords:
-        coords[chr] = get_random_coords((num_models, len(seq_pos_dict[chr])), random_radius)
+        coords[chr] = get_random_coords((num_models, len(seq_pos_dict[chr])),
+                                        random_radius * bead_size)
       elif coords[chr].shape[1] != len(seq_pos_dict[chr]):
         coords[chr] = stack([getInterpolatedCoords(coords[chr][i],
                                                    seq_pos_dict[chr],
@@ -390,7 +393,8 @@ def anneal_genome(contact_dict, num_models, particle_size,
 
     # Equal unit masses and radii for all particles
     masses = {chr: ones(len(pos), float) for chr, pos in seq_pos_dict.items()}
-    radii = {chr: ones(len(pos), float) for chr, pos in seq_pos_dict.items()}
+    radii = {chr: full(len(pos), bead_size, float)
+             for chr, pos in seq_pos_dict.items()}
 
     # Concatenate chromosomal data into a single array of particle restraints
     # for structure calculation.
@@ -406,6 +410,7 @@ def anneal_genome(contact_dict, num_models, particle_size,
 
     # Setup annealig schedule: setup temps and repulsive terms
     temps = geomspace(temp_range[0], temp_range[1], temp_steps, endpoint=False)
+    temps *= bead_size ** 2
     repulses = arctan(linspace(0, 1, temp_steps, endpoint=False) * 20 - 10) / pi / arctan(10) + 0.5
 
     # Update coordinates in the annealing schedule
@@ -417,7 +422,8 @@ def anneal_genome(contact_dict, num_models, particle_size,
 
         # Update coordinates for this temp
         dt = runDynamics(model_coords, masses, radii, restraint_indices, restraint_dists,
-                         ambiguity, temp, time_step, dynamics_steps, repulse)
+                         ambiguity, temp, time_step, dynamics_steps, repulse,
+                         repDist=1.5 * bead_size)
 
         time_taken += dt
 

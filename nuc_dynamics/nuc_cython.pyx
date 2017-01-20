@@ -239,8 +239,8 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
   cdef double a, b, d, dmin, dmax, dx, dy, dz
   cdef double r, r2, s2, rjk, ujk, force = 0, t
 
-  b = asymptote*distSwitch*distSwitch - exponent*distSwitch*distSwitch*distSwitch
-  a = distSwitch*distSwitch - asymptote*distSwitch - b/ distSwitch
+  b = distSwitch * distSwitch * (asymptote - exponent*distSwitch)
+  a = distSwitch * (distSwitch - 2 * asymptote + exponent*distSwitch)
 
   for m in range(len(restAmbig) - 1):
     nAmbig = restAmbig[m+1] - restAmbig[m]
