@@ -272,7 +272,7 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
       r2 = max(r2, 1e-8)
       d = dmin - sqrt(r2)
       ujk = fConst * d * d
-      rjk = fConst * 2 * d
+      rjk = fConst * exponent * d
 
     elif dmin*dmin <= r2 <= dmax*dmax:
       ujk = rjk = 0
@@ -281,7 +281,7 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
     elif dmax*dmax < r2 <= (dmax+distSwitch) * (dmax+distSwitch):
       d = sqrt(r2) - dmax
       ujk = fConst * d * d
-      rjk = - fConst * 2 * d
+      rjk = - fConst * exponent * d
 
     else: # (dmax+distSwitch) ** 2 < r2
       d = sqrt(r2) - dmax
