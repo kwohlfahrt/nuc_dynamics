@@ -233,14 +233,11 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
                               ndarray[double, ndim=2] restLimits,
                               ndarray[int, ndim=1] restAmbig,
                               int nRest, double fConst, double exponent=2.0,
-                              double distSwitch=0.5, double asymptote=1.0):
+                              double switchRatio=0.5, double asymptote=1.0):
 
   cdef int i, j, k, n, m, nAmbig
-  cdef double a, b, d, dmin, dmax, dx, dy, dz
+  cdef double a, b, d, dmin, dmax, dx, dy, dz, distSwitch
   cdef double r, r2, s2, rjk, ujk, force = 0, t
-
-  b = distSwitch * distSwitch * distSwitch * exponent * (asymptote - 1)
-  a = distSwitch * distSwitch * (1 - 2*asymptote*exponent + exponent)
 
   for m in range(len(restAmbig) - 1):
     nAmbig = restAmbig[m+1] - restAmbig[m]
@@ -267,6 +264,7 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
 
     dmin = restLimits[i,0]
     dmax = restLimits[i,1]
+    distSwitch = dmax * switchRatio
 
     if r2 < dmin*dmin:
       r2 = max(r2, 1e-8)
@@ -284,6 +282,9 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
       rjk = - fConst * exponent * d
 
     else: # (dmax+distSwitch) ** 2 < r2
+      b = distSwitch * distSwitch * distSwitch * exponent * (asymptote - 1)
+      a = distSwitch * distSwitch * (1 - 2*asymptote*exponent + exponent)
+
       d = sqrt(r2) - dmax
       ujk = fConst * (a + asymptote*distSwitch*exponent*d + b/d)
       rjk = - fConst * (asymptote*distSwitch*exponent - b/(d*d))
