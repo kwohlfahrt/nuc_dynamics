@@ -329,7 +329,7 @@ def calc_ambiguity_offsets(groups):
   return offsets[group_starts]
 
 
-def backbone_restraints(seq_pos, particle_size, scale=1.0, lower=0.1, upper=1.1):
+def backbone_restraints(seq_pos, particle_size, scale=1.0, lower=0.1, upper=1.1, weight=1.0):
   from numpy import empty, arange, array
 
   restraints = empty(len(seq_pos) - 1, dtype=Restraint)
@@ -340,6 +340,7 @@ def backbone_restraints(seq_pos, particle_size, scale=1.0, lower=0.1, upper=1.1)
   bounds = array([lower, upper], dtype='float') * scale
   restraints['dists'] = ((seq_pos[1:] - seq_pos[:-1]) / particle_size)[:, None] * bounds
   restraints['ambiguity'] = 0 # Use '0' to represent no ambiguity
+  restraints['weight'] = weight
 
   return restraints
 
@@ -398,7 +399,9 @@ def anneal_genome(contact_dict, num_models, particle_size,
 
     # Concatenate chromosomal data into a single array of particle restraints
     # for structure calculation.
-    restraint_indices, restraint_dists, ambiguity_groups = concatenate_restraints(restraint_dict, seq_pos_dict)
+    restraint_indices, restraint_dists, restraint_weights, ambiguity_groups = (
+      concatenate_restraints(restraint_dict, seq_pos_dict)
+    )
     coords = concatenate([coords[chr] for chr in chromosomes], axis=1)
     masses = concatenate([masses[chr] for chr in chromosomes])
     radii = concatenate([radii[chr] for chr in chromosomes])
@@ -406,6 +409,7 @@ def anneal_genome(contact_dict, num_models, particle_size,
     restraint_order = argsort(ambiguity_groups)
     restraint_indices = restraint_indices[restraint_order]
     restraint_dists = restraint_dists[restraint_order]
+    restraint_weights = restraint_weights[restraint_order]
     ambiguity = calc_ambiguity_offsets(ambiguity_groups[restraint_order])
 
     # Setup annealig schedule: setup temps and repulsive terms
@@ -423,7 +427,7 @@ def anneal_genome(contact_dict, num_models, particle_size,
 
         # Update coordinates for this temp
         dt = runDynamics(model_coords, masses, radii, restraint_indices, restraint_dists,
-                         ambiguity, temp, time_step, dynamics_steps, repulse,
+                         restraint_weights, ambiguity, temp, time_step, dynamics_steps, repulse,
                          repDist=1.5 * bead_size)
 
         time_taken += dt
@@ -508,7 +512,7 @@ def main(args=None):
     contacts = remove_isolated_contacts(contacts, threshold=args.isolated_threshold)
 
     coords, seq_pos = hierarchical_annealing(
-        contacts, args.particle_sizes, args.models,
+        contacts, args.particle_sizes, num_models=args.models,
         contact_dist=args.contact_dist, backbone_dist=args.backbone_dist,
         # Cautious annealing parameters
         # Don' need to be fixed, but are for simplicity

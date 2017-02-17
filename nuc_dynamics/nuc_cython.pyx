@@ -8,8 +8,10 @@ cdef packed struct Restraint_t:
   int indices[2]
   double dists[2]
   int ambiguity
+  double weight
 
-Restraint = dtype([('indices', 'int32', 2), ('dists', 'float64', 2), ('ambiguity', 'int32')])
+Restraint = dtype([('indices', 'int32', 2), ('dists', 'float64', 2),
+                   ('ambiguity', 'int32'), ('weight', 'float64')])
 
 #ctypedef int_t   int
 #ctypedef double_t double
@@ -231,6 +233,7 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
                               ndarray[double, ndim=2] coords,
                               ndarray[int,   ndim=2] restIndices,
                               ndarray[double, ndim=2] restLimits,
+                              ndarray[double, ndim=1] restWeight,
                               ndarray[int, ndim=1] restAmbig,
                               int nRest, double fConst, double exponent=2.0,
                               double switchRatio=0.5, double asymptote=1.0):
@@ -303,7 +306,7 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
       dz = coords[j,2] - coords[k,2]
 
       s2 = max(dx*dx + dy*dy + dz*dz, 1e-08)
-      t = rjk * pow(r2, 2.5) / (s2 * s2 * s2)
+      t = rjk * pow(r2, 2.5) / (s2 * s2 * s2) * restWeight[i+n]
 
       dx *= t
       dy *= t
@@ -409,6 +412,7 @@ def runDynamics(ndarray[double, ndim=2] coords,
                 ndarray[double, ndim=1] radii,
                 ndarray[int, ndim=2] restIndices,
                 ndarray[double, ndim=2] restLimits,
+                ndarray[double, ndim=1] restWeight,
                 ndarray[int, ndim=1] restAmbig,
                 double tRef=1000.0, double tStep=0.001, int nSteps=1000,
                 double fConstR=1.0, double fConstD=25.0, double beta=10.0,
@@ -464,7 +468,8 @@ def runDynamics(ndarray[double, ndim=2] coords,
   nRep = getRepulsionList(repList, coords, repDist, radii)
 
   fRep = getRepulsiveForce(repList, forces, coords, nRep,  fConstR, radii)
-  fDist = getRestraintForce(forces, coords, restIndices, restLimits, restAmbig, nRest, fConstD)
+  fDist = getRestraintForce(forces, coords, restIndices, restLimits,
+                            restWeight, restAmbig, nRest, fConstD)
 
   for step in range(nSteps):
     for i in range(nCoords):
@@ -493,7 +498,8 @@ def runDynamics(ndarray[double, ndim=2] coords,
       forces[i,2] = 0.0
 
     fRep  = getRepulsiveForce(repList, forces, coords, nRep, fConstR, radii)
-    fDist = getRestraintForce(forces, coords, restIndices, restLimits, restAmbig, nRest, fConstD)
+    fDist = getRestraintForce(forces, coords, restIndices, restLimits,
+                              restWeight, restAmbig, nRest, fConstD)
 
     updateVelocity(masses, forces, accel, veloc, nCoords, tRef, tStep0,  beta)
 
@@ -510,7 +516,8 @@ def runDynamics(ndarray[double, ndim=2] coords,
 
 
 def calc_restraints(contact_dict, pos_dict, int particle_size=10000,
-                    float scale=1.0, float lower=0.8, float upper=1.2):
+                    float scale=1.0, float lower=0.8, float upper=1.2,
+                    float weight=1.0):
   """
   Function to convert single-cell contact data into distance restraints
   for structure calculations.
@@ -565,6 +572,7 @@ def calc_restraints(contact_dict, pos_dict, int particle_size=10000,
         restraints[i].dists[0] = scale * lower
         restraints[i].dists[1] = scale * upper
         restraints[i].ambiguity = 0
+        restraints[i].weight = weight
 
       restraint_dict[chrA][chrB] = restraints
 
@@ -602,8 +610,9 @@ def concatenate_restraints(restraint_dict, pos_dict):
   # Final arrays which will hold identities of restrained particle pairs
   # and the restraint distances for each
   cdef ndarray[int, ndim=2] particle_indices = numpy.empty((num_restraints, 2), numpy.int32)
-  cdef ndarray[double, ndim=2] distances = numpy.empty((num_restraints, 2), float)
+  cdef ndarray[double, ndim=2] distances = numpy.empty((num_restraints, 2), numpy.float64)
   cdef ndarray[int, ndim=1] ambiguity_groups = numpy.empty(num_restraints, numpy.int32)
+  cdef ndarray[double, ndim=1] weights = numpy.empty(num_restraints, numpy.float64)
 
   m = 0
 
@@ -624,7 +633,8 @@ def concatenate_restraints(restraint_dict, pos_dict):
         distances[m,1] = restraints[i].dists[1] # upper
 
         ambiguity_groups[m] = restraints[i].ambiguity
+        weights[m] = restraints[i].weight
 
         m += 1
 
-  return particle_indices, distances, ambiguity_groups
+  return particle_indices, distances, weights, ambiguity_groups
