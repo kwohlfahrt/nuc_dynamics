@@ -302,7 +302,7 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
       dy = coords[j,1] - coords[k,1]
       dz = coords[j,2] - coords[k,2]
 
-      s2 = dx*dx + dy*dy + dz*dz
+      s2 = max(dx*dx + dy*dy + dz*dz, 1e-08)
       t = rjk * pow(r2, 2.5) / (s2 * s2 * s2)
 
       dx *= t
