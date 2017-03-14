@@ -358,10 +358,10 @@ def backbone_restraints(seq_pos, particle_size, scale=1.0, lower=0.1, upper=1.1,
   return restraints
 
 
-def anneal_genome(contact_dict, num_models, particle_size, prev_seq_pos_dict=None, start_coords=None,
+def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coords=None,
                   scaling_exponent=0.0, contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
                   temp_range=(5000.0, 10.0), temp_steps=500, dynamics_steps=100, time_step=0.001,
-                  random_seed=None, random_radius=10.0):
+                  random_seed=None, random_radius=10.0, num_models=1):
     """
     Use chromosome contact data to generate distance restraints and then
     apply a simulated annealing protocul to generate/refine coordinates.
@@ -452,7 +452,7 @@ def anneal_genome(contact_dict, num_models, particle_size, prev_seq_pos_dict=Non
     return coords_dict, seq_pos_dict
 
 
-def hierarchical_annealing(contacts, particle_sizes, num_models=1, *args, **kwargs):
+def hierarchical_annealing(contacts, particle_sizes, *args, **kwargs):
     # Initial coords will be random
     start_coords = None
 
@@ -474,8 +474,7 @@ def hierarchical_annealing(contacts, particle_sizes, num_models=1, *args, **kwar
                                      particle_size, threshold=5.0)
 
         coords_dict, particle_seq_pos = anneal_genome(
-          contacts, num_models, particle_size, prev_seq_pos, start_coords,
-          *args, **kwargs
+          contacts, particle_size, prev_seq_pos, start_coords, *args, **kwargs
         )
 
         # Next stage based on previous stage's 3D coords
@@ -528,8 +527,7 @@ def main(args=None):
     contacts = remove_isolated_contacts(contacts, threshold=args.isolated_threshold)
 
     coords, seq_pos = hierarchical_annealing(
-        contacts, args.particle_sizes,
-        num_models=args.models, scaling_exponent=args.scaling_exponent,
+        contacts, args.particle_sizes, scaling_exponent=args.scaling_exponent,
         contact_dist=args.contact_dist, backbone_dist=args.backbone_dist,
         # Cautious annealing parameters
         # Don' need to be fixed, but are for simplicity
@@ -537,6 +535,7 @@ def main(args=None):
         dynamics_steps=args.dyn_steps, time_step=args.time_step,
         # To set up starting coords
         random_seed=args.seed, random_radius=args.random_radius,
+        num_models=args.models,
     )
 
     if args.output.suffix == ".pdb":
