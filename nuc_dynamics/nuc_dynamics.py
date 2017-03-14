@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from .nuc_cython import (runDynamics, getSupportedPairs, calc_restraints, Restraint,
                          concatenate_restraints, getInterpolatedCoords)
 
@@ -83,7 +85,7 @@ def calc_limits(contact_dict):
   return chromo_limits
 
 
-def export_nuc_coords(file_path, coords_dict, seq_pos_dict):
+def export_nuc_coords(file_path, coords_dict, seq_pos_dict, calc_args):
   import h5py
 
   with h5py.File(file_path, "w") as f:
@@ -94,6 +96,13 @@ def export_nuc_coords(file_path, coords_dict, seq_pos_dict):
     seq_pos = structure.create_group("particles")
     for chromosome, data in seq_pos_dict.items():
       seq_pos.create_group(chromosome).create_dataset('positions', data=data)
+    calculation = structure.create_group('calculation')
+    for arg, value in calc_args.items():
+      if value is None:
+        value = 'None'
+      elif isinstance(value, Path):
+        value = str(value)
+      calculation.attrs[arg] = value
 
 
 def export_pdb_coords(file_path, coords_dict, seq_pos_dict, particle_size, scale=1.0, extended=True):
@@ -488,7 +497,6 @@ def hierarchical_annealing(contacts, particle_sizes, *args, **kwargs):
 def main(args=None):
     from argparse import ArgumentParser
     from sys import argv
-    from pathlib import Path
 
     parser = ArgumentParser(description="Calculate a structure from a contact file.")
     parser.add_argument("contacts", type=Path, help="The .ncc file to load contacts from")
@@ -541,7 +549,7 @@ def main(args=None):
     if args.output.suffix == ".pdb":
       export_pdb_coords(str(args.output), coords, seq_pos, args.particle_sizes[-1])
     elif args.output.suffix == ".nuc":
-      export_nuc_coords(str(args.output), coords, seq_pos)
+      export_nuc_coords(str(args.output), coords, seq_pos, vars(args))
     print('Saved structure file to: %s' % str(args.output))
 
 if __name__ == "__main__":
