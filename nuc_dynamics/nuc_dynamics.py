@@ -83,6 +83,19 @@ def calc_limits(contact_dict):
   return chromo_limits
 
 
+def export_nuc_coords(file_path, coords_dict, seq_pos_dict):
+  import h5py
+
+  with h5py.File(file_path, "w") as f:
+    structure = f.create_group("structures/0")
+    coords = structure.create_group("coords")
+    for chromosome, data in coords_dict.items():
+      coords.create_dataset(chromosome, data=data)
+    seq_pos = structure.create_group("particles")
+    for chromosome, data in seq_pos_dict.items():
+      seq_pos.create_group(chromosome).create_dataset('positions', data=data)
+
+
 def export_pdb_coords(file_path, coords_dict, seq_pos_dict, particle_size, scale=1.0, extended=True):
 
   from numpy import array, uint32, float32
@@ -508,6 +521,9 @@ def main(args=None):
                         help="The radius for random starting coordinates")
 
     args = parser.parse_args(argv[1:] if args is None else args)
+    if args.output.suffix not in (".nuc", ".pdb"):
+      raise ValueError("Invalid output format, must be .nuc or .pdb")
+
     contacts = load_ncc_file(str(args.contacts))
     contacts = remove_isolated_contacts(contacts, threshold=args.isolated_threshold)
 
@@ -523,8 +539,10 @@ def main(args=None):
         random_seed=args.seed, random_radius=args.random_radius,
     )
 
-    # Save final coords as PDB format file
-    export_pdb_coords(str(args.output), coords, seq_pos, args.particle_sizes[-1])
+    if args.output.suffix == ".pdb":
+      export_pdb_coords(str(args.output), coords, seq_pos, args.particle_sizes[-1])
+    elif args.output.suffix == ".nuc":
+      export_nuc_coords(str(args.output), coords, seq_pos)
     print('Saved structure file to: %s' % str(args.output))
 
 if __name__ == "__main__":
