@@ -1,7 +1,6 @@
 from pathlib import Path
 
-from .nuc_cython import (runDynamics, getSupportedPairs, calc_restraints, Restraint,
-                         getInterpolatedCoords)
+from .nuc_cython import (runDynamics, getSupportedPairs, Restraint, getInterpolatedCoords)
 
 def load_ncc_file(file_path):
   """Load chromosome and contact data from NCC format file, as output from NucProcess"""
@@ -405,6 +404,24 @@ def concatenate_restraints(restraint_dict, pos_dict):
   return particle_indices, distances, weights, ambiguity_groups
 
 
+def calc_restraints(contact_dict, pos_dict,
+                    scale=1.0, lower=0.8, upper=1.2, weight=1.0):
+  from numpy import empty, array, searchsorted
+  from collections import defaultdict
+
+  r = defaultdict(dict)
+  for (chr_a, chr_b), contacts in flatten_dict(contact_dict).items():
+    pos_a, pos_b, ambig = contacts
+    restraints = empty(len(contacts.T), Restraint)
+    restraints['weight'] = weight
+    restraints['dists'] = array([[lower * scale, upper * scale]])
+    restraints['ambiguity'] = 0
+    restraints['indices'][:, 0] = searchsorted(pos_dict[chr_a], pos_a)
+    restraints['indices'][:, 1] = searchsorted(pos_dict[chr_b], pos_b)
+    r[chr_a][chr_b] = restraints
+  return dict(r)
+
+
 def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coords=None,
                   scaling_exponent=0.0, contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
                   temp_range=(5000.0, 10.0), temp_steps=500, dynamics_steps=100, time_step=0.001,
@@ -431,7 +448,7 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
     chromosomes = sorted(seq_pos_dict)
 
     # Calculate distance restrains from contact data
-    restraint_dict = calc_restraints(contact_dict, seq_pos_dict, particle_size, scale=bead_size,
+    restraint_dict = calc_restraints(contact_dict, seq_pos_dict, scale=bead_size,
                                      lower=contact_dist[0], upper=contact_dist[1])
 
     for chr in chromosomes:

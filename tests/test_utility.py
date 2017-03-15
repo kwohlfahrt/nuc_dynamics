@@ -81,3 +81,30 @@ def test_concatenate_restraints():
     )
     for a, b in zip(expected, concatenate_restraints(restraints, seq_pos)):
         np.testing.assert_array_equal(a, b)
+
+def test_calc_restraints():
+    from nuc_dynamics.nuc_cython import Restraint
+    from nuc_dynamics import flatten_dict, calc_restraints
+
+    seq_pos = {'a': np.arange(10, 111, 10, dtype='int32'),
+               'b': np.arange(40, 221, 20, dtype='int32')}
+    contacts = {'a': {'a': np.array([[ 21,  80, 0],
+                                     [ 20,  81, 1],
+                                     [  2, 109, 1]], dtype='int').T,
+                      'b': np.array([[ 11, 120, 2],
+                                     [ 40,  60, 3]], dtype='int').T},
+                'b': {'b': np.array([[ 50,  50, 4]], dtype='int').T}}
+
+    expected = {'a': {'a': np.array([([ 2,  7], [0.8, 1.2], 0, 1.0),
+                                     ([ 1,  8], [0.8, 1.2], 0, 1.0),
+                                     ([ 0, 10], [0.8, 1.2], 0, 1.0)], dtype=Restraint),
+                      'b': np.array([([ 1,  4], [0.8, 1.2], 0, 1.0),
+                                     ([ 3,  1], [0.8, 1.2], 0, 1.0)], dtype=Restraint)},
+                'b': {'b': np.array([([ 1,  1], [0.8, 1.2], 0, 1.0)], dtype=Restraint)}}
+    expected = flatten_dict(expected)
+
+    for key, restraints in sorted(flatten_dict(calc_restraints(contacts, seq_pos)).items()):
+        np.testing.assert_array_equal(expected[key]['indices'], restraints['indices'])
+        np.testing.assert_allclose(expected[key]['dists'], restraints['dists'])
+        np.testing.assert_array_equal(expected[key]['ambiguity'], restraints['ambiguity'])
+        np.testing.assert_allclose(expected[key]['weight'], restraints['weight'])

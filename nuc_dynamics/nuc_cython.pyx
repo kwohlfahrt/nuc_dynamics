@@ -4,12 +4,6 @@ import numpy, time
 
 BOLTZMANN_K = 0.0019872041
 
-cdef packed struct Restraint_t:
-  int indices[2]
-  double dists[2]
-  int ambiguity
-  double weight
-
 Restraint = dtype([('indices', 'int32', 2), ('dists', 'float64', 2),
                    ('ambiguity', 'int32'), ('weight', 'float64')])
 
@@ -513,67 +507,3 @@ def runDynamics(ndarray[double, ndim=2] coords,
     tTaken += tStep
 
   return tTaken
-
-
-def calc_restraints(contact_dict, pos_dict, int particle_size=10000,
-                    float scale=1.0, float lower=0.8, float upper=1.2,
-                    float weight=1.0):
-  """
-  Function to convert single-cell contact data into distance restraints
-  for structure calculations.
-  """
-
-  cdef int i, j, k, a, b, n, na, nb
-  cdef ndarray[long, ndim=2] contacts # Contact matrix (4:(posA, posB, ambigGrp), nContacts)
-  cdef ndarray[Restraint_t, ndim=1] restraints  # Distance restraints (nRestraints,)
-  cdef ndarray[int, ndim=1] seq_pos_a
-  cdef ndarray[int, ndim=1] seq_pos_b
-
-  restraint_dict = {}    # Final restraints for each pair of chromosomes
-
-  # Get restraint indices, do binning of contact observations
-  for chrA in contact_dict:
-    if chrA not in pos_dict:
-      continue
-
-    na = len(pos_dict[chrA])
-    seq_pos_a = pos_dict[chrA]
-    restraint_dict[chrA] = {}
-
-    for chrB in contact_dict[chrA]:
-      if chrB not in pos_dict:
-        continue
-
-      nb = len(pos_dict[chrB])
-      seq_pos_b = pos_dict[chrB]
-
-      contacts = contact_dict[chrA][chrB]
-      n = len(contacts[0])
-
-      restraints = numpy.empty(n, Restraint)
-
-      for i in range(n):
-        # Find bin index for chromo A
-        for j in range(na):
-          if seq_pos_a[j] >= contacts[0,i]:
-            break
-        else:
-          continue
-
-        # Find bin index for chromo B
-        for k in range(nb):
-          if seq_pos_b[k] >= contacts[1,i]:
-            break
-        else:
-          continue
-
-        restraints[i].indices[0] = j
-        restraints[i].indices[1] = k
-        restraints[i].dists[0] = scale * lower
-        restraints[i].dists[1] = scale * upper
-        restraints[i].ambiguity = 0
-        restraints[i].weight = weight
-
-      restraint_dict[chrA][chrB] = restraints
-
-  return restraint_dict
