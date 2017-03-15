@@ -15,10 +15,6 @@ def load_ncc_file(file_path):
   else:
     file_obj = open(file_path)
 
-  # Observations are treated individually in single-cell Hi-C,
-  # i.e. no binning, so num_obs always 1 for each contact
-  num_obs = 1
-
   contact_dict = {}
 
   for line in file_obj:
@@ -44,7 +40,7 @@ def load_ncc_file(file_path):
     if chr_b not in contact_dict[chr_a]:
       contact_dict[chr_a][chr_b] = []
 
-    contact_dict[chr_a][chr_b].append((pos_a, pos_b, num_obs, int(ambig_group)))
+    contact_dict[chr_a][chr_b].append((pos_a, pos_b, int(ambig_group)))
 
   file_obj.close()
 

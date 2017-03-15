@@ -524,7 +524,7 @@ def calc_restraints(contact_dict, pos_dict, int particle_size=10000,
   """
 
   cdef int i, j, k, a, b, n, na, nb
-  cdef ndarray[long, ndim=2] contacts # Contact matrix (4:(posA, posB, nObs, ambigGrp), nContacts)
+  cdef ndarray[long, ndim=2] contacts # Contact matrix (4:(posA, posB, ambigGrp), nContacts)
   cdef ndarray[Restraint_t, ndim=1] restraints  # Distance restraints (nRestraints,)
   cdef ndarray[int, ndim=1] seq_pos_a
   cdef ndarray[int, ndim=1] seq_pos_b
