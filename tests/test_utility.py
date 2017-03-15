@@ -50,8 +50,16 @@ def test_ambiguity_offsets_short():
     offsets = np.array([0], dtype='int32')
     testing.assert_array_equal(calc_ambiguity_offsets(groups), offsets)
 
+def test_flatten_dict():
+    from nuc_dynamics import flatten_dict
+
+    data = {0: {1: {2: 'foo', 3: 'foo2'}, 'bar': 'baz'}, 5: 'foo'}
+    expected = {(0, 1, 2): 'foo', (0, 1, 3): 'foo2', (0, 'bar'): 'baz', (5,): 'foo'}
+
+    assert expected == flatten_dict(data)
+
 def test_concatenate_restraints():
-    from nuc_dynamics.nuc_cython import concatenate_restraints, Restraint
+    from nuc_dynamics.nuc_cython import Restraint
     from nuc_dynamics import concatenate_restraints
 
     seq_pos = {'a': np.arange(10), 'b': np.arange(20)}

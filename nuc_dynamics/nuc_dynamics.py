@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from .nuc_cython import (runDynamics, getSupportedPairs, calc_restraints, Restraint,
-                         concatenate_restraints, getInterpolatedCoords)
+                         getInterpolatedCoords)
 
 def load_ncc_file(file_path):
   """Load chromosome and contact data from NCC format file, as output from NucProcess"""
@@ -361,6 +361,48 @@ def backbone_restraints(seq_pos, particle_size, scale=1.0, lower=0.1, upper=1.1,
   restraints['weight'] = weight
 
   return restraints
+
+
+def flatten_dict(d):
+  r = {}
+  for key, value in d.items():
+    if isinstance(value, dict):
+      r.update({(key,) + k: v for k, v in flatten_dict(value).items()})
+    else:
+      r[(key,)] = value
+  return r
+
+
+def concatenate_restraints(restraint_dict, pos_dict):
+  from itertools import accumulate, chain
+  from numpy import empty
+  import operator as op
+
+  chromosome_lengths = map(len, map(pos_dict.__getitem__, sorted(pos_dict)))
+  chromosome_offsets = dict(zip(sorted(pos_dict),
+                                chain([0], accumulate(chromosome_lengths, op.add))))
+
+  flat_restraints = flatten_dict(restraint_dict)
+  restraint_lengths = map(len, map(flat_restraints.__getitem__, sorted(flat_restraints)))
+  restraint_offsets = dict(zip(sorted(flat_restraints),
+                               chain([0], accumulate(restraint_lengths, op.add))))
+  num_restraints = sum(map(len, flat_restraints.values()))
+
+  particle_indices = empty((num_restraints, 2), 'int32')
+  distances = empty((num_restraints, 2), 'float64')
+  ambiguity_groups = empty(num_restraints, 'int32')
+  weights = empty(num_restraints, 'float')
+
+  for (chr_a, chr_b), restraints in flat_restraints.items():
+    offset = restraint_offsets[chr_a, chr_b]
+    s = slice(offset, offset+len(restraints))
+    particle_indices[s, 0] = restraints['indices'][:, 0] + chromosome_offsets[chr_a]
+    particle_indices[s, 1] = restraints['indices'][:, 1] + chromosome_offsets[chr_b]
+    distances[s] = restraints['dists']
+    ambiguity_groups[s] = restraints['ambiguity']
+    weights[s] = restraints['weight']
+
+  return particle_indices, distances, weights, ambiguity_groups
 
 
 def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coords=None,
