@@ -49,3 +49,27 @@ def test_ambiguity_offsets_short():
     groups = np.array([], dtype='int32')
     offsets = np.array([0], dtype='int32')
     testing.assert_array_equal(calc_ambiguity_offsets(groups), offsets)
+
+def test_concatenate_restraints():
+    from nuc_dynamics.nuc_cython import concatenate_restraints, Restraint
+    from nuc_dynamics import concatenate_restraints
+
+    seq_pos = {'a': np.arange(10), 'b': np.arange(20)}
+    restraints = {'a': {'a': np.array([([ 4,  5], [0.3, 1.3], 0, 1.3),
+                                       ([ 3,  2], [0.4, 1.4], 1, 1.4),],
+                                      dtype=Restraint),
+                        'b': np.array([([ 4,  5], [0.1, 1.1], 0, 1.1),
+                                       ([ 8, 15], [0.2, 1.2], 0, 1.2),],
+                                      dtype=Restraint)},
+                  'b': {'b': np.array([([12, 16], [0.5, 1.5], 0, 1.5),
+                                       ([ 3,  2], [0.6, 1.6], 1, 1.6),],
+                                      dtype=Restraint)}
+    }
+    expected = (np.array([[4, 5], [3, 2], [4, 15], [8, 25], [22, 26], [13, 12]]),
+                np.array([[0.3, 1.3], [0.4, 1.4], [0.1, 1.1],
+                          [0.2, 1.2], [0.5, 1.5], [0.6, 1.6]]),
+                np.array([1.3, 1.4, 1.1, 1.2, 1.5, 1.6]),
+                np.array([0, 1, 0, 0, 0, 1]),
+    )
+    for a, b in zip(expected, concatenate_restraints(restraints, seq_pos)):
+        np.testing.assert_array_equal(a, b)
