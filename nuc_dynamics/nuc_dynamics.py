@@ -80,7 +80,7 @@ def calc_limits(contact_dict):
   return chromo_limits
 
 
-def export_nuc_coords(file_path, coords_dict, seq_pos_dict, calc_args):
+def export_nuc_coords(file_path, coords_dict, seq_pos_dict, restraint_dict, calc_args):
   import h5py
 
   with h5py.File(file_path, "w") as f:
@@ -98,6 +98,10 @@ def export_nuc_coords(file_path, coords_dict, seq_pos_dict, calc_args):
       elif isinstance(value, Path):
         value = str(value)
       calculation.attrs[arg] = value
+    restraints = structure.create_group('restraints')
+    for (chr_a, chr_b), data in flatten_dict(restraint_dict).items():
+      group = restraints.require_group(chr_a)
+      group.create_dataset(chr_b, data=data)
 
 
 def export_pdb_coords(file_path, coords_dict, seq_pos_dict, particle_size, scale=1.0, extended=True):
@@ -519,7 +523,7 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
     # Convert from single coord array to dict keyed by chromosome
     coords_dict = unpack_chromo_coords(coords, chromosomes, seq_pos_dict)
 
-    return coords_dict, seq_pos_dict
+    return coords_dict, seq_pos_dict, restraint_dict
 
 
 def hierarchical_annealing(contacts, particle_sizes, *args, **kwargs):
@@ -543,7 +547,7 @@ def hierarchical_annealing(contacts, particle_sizes, *args, **kwargs):
             remove_violated_contacts(contacts, coords_dict, particle_seq_pos,
                                      particle_size, threshold=5.0)
 
-        coords_dict, particle_seq_pos = anneal_genome(
+        coords_dict, particle_seq_pos, restraint_dict = anneal_genome(
           contacts, particle_size, prev_seq_pos, start_coords, *args, **kwargs
         )
 
@@ -552,7 +556,7 @@ def hierarchical_annealing(contacts, particle_sizes, *args, **kwargs):
         start_coords = coords_dict
         prev_seq_pos = particle_seq_pos
 
-    return coords_dict, particle_seq_pos
+    return coords_dict, particle_seq_pos, restraint_dict
 
 
 def main(args=None):
@@ -595,7 +599,7 @@ def main(args=None):
     contacts = load_ncc_file(str(args.contacts))
     contacts = remove_isolated_contacts(contacts, threshold=args.isolated_threshold)
 
-    coords, seq_pos = hierarchical_annealing(
+    coords, seq_pos, restraints = hierarchical_annealing(
         contacts, args.particle_sizes, scaling_exponent=args.scaling_exponent,
         contact_dist=args.contact_dist, backbone_dist=args.backbone_dist,
         # Cautious annealing parameters
@@ -610,7 +614,7 @@ def main(args=None):
     if args.output.suffix == ".pdb":
       export_pdb_coords(str(args.output), coords, seq_pos, args.particle_sizes[-1])
     elif args.output.suffix == ".nuc":
-      export_nuc_coords(str(args.output), coords, seq_pos, vars(args))
+      export_nuc_coords(str(args.output), coords, seq_pos, restraints, vars(args))
     print('Saved structure file to: %s' % str(args.output))
 
 if __name__ == "__main__":
