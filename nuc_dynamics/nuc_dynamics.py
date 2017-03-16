@@ -526,7 +526,7 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
     return coords_dict, seq_pos_dict, restraint_dict
 
 
-def hierarchical_annealing(contacts, particle_sizes, *args, **kwargs):
+def hierarchical_annealing(contacts, particle_sizes, **kwargs):
     # Initial coords will be random
     start_coords = None
 
@@ -548,7 +548,7 @@ def hierarchical_annealing(contacts, particle_sizes, *args, **kwargs):
                                      particle_size, threshold=5.0)
 
         coords_dict, particle_seq_pos, restraint_dict = anneal_genome(
-          contacts, particle_size, prev_seq_pos, start_coords, *args, **kwargs
+          contacts, particle_size, prev_seq_pos, start_coords, **kwargs
         )
 
         # Next stage based on previous stage's 3D coords
