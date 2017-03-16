@@ -545,6 +545,8 @@ def main(args=None):
                         help="The radius for random starting coordinates")
     parser.add_argument("--image-weight", type=float, default=1.0,
                         help="The weighting to use for image-based restraints")
+    parser.add_argument("--image-scale", type=float, default=1.0,
+                        help="The scaling of the image coordinates")
 
     args = parser.parse_args(argv[1:] if args is None else args)
 
@@ -554,7 +556,8 @@ def main(args=None):
     # Load image coordinates, center and scale
     image_coords = {'CENPA': load_image_coords(args.CENPA)}
     image_mean = concatenate(list(image_coords.values())).mean(axis=0)
-    image_coords = {k: (v - image_mean) * 10 for k, v in image_coords.items()}
+    image_coords = {k: (v - image_mean) * args.image_scale
+                    for k, v in image_coords.items()}
 
     chromosomes = set.union(set(contacts), *map(set, contacts.values()))
     # Use -ive ambiguity groups to ensure no overlap with contact groups
