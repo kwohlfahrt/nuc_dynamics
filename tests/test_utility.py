@@ -110,7 +110,7 @@ def test_calc_restraints():
         np.testing.assert_allclose(expected[key]['weight'], restraints['weight'])
 
 def test_get_interpolated_coords():
-    from nuc_dynamics.nuc_cython import getInterpolatedCoords
+    from nuc_dynamics import get_interpolated_coords
 
     prev_seq_pos = np.arange(5, 15, 2, dtype='int32')
     seq_pos = np.arange(5, 15, 1, dtype='int32')
@@ -123,11 +123,11 @@ def test_get_interpolated_coords():
                          [ 3.0, 7.0, 9.5], [ 4.25, 7.5, 7.75],
                          [ 5.5, 8.0, 6.0], [ 5.5 , 8.0, 6.0 ],])
 
-    result = getInterpolatedCoords(coords, seq_pos, prev_seq_pos)
+    result = get_interpolated_coords(coords, seq_pos, prev_seq_pos)
     np.testing.assert_array_equal(result, expected)
 
 def test_get_interpolated_coords_edge():
-    from nuc_dynamics.nuc_cython import getInterpolatedCoords
+    from nuc_dynamics import get_interpolated_coords
 
     prev_seq_pos = np.arange(5, 15, 2, dtype='int32')
     seq_pos = np.arange(8, 18, 1, dtype='int32')
@@ -142,5 +142,5 @@ def test_get_interpolated_coords_edge():
                          [ 5.5 , 8.0, 6.0 ], [ 5.5, 8.0, 6.0],])
 
 
-    result = getInterpolatedCoords(coords, seq_pos, prev_seq_pos)
+    result = get_interpolated_coords(coords, seq_pos, prev_seq_pos)
     np.testing.assert_array_equal(result, expected)

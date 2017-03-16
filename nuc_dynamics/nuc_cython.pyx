@@ -347,60 +347,6 @@ def getSupportedPairs(ndarray[int, ndim=2] positions,
   return indices
 
 
-def getInterpolatedCoords(ndarray[double, ndim=2] coords,
-                          ndarray[int, ndim=1] positions,
-                          ndarray[int, ndim=1] prevPositions):
-  """
-  Interpolate x,y,z particle positions for an array of seq positions to a new
-  seq positions e.g. for a change in binned resolution.
-  """
-
-  cdef int n = len(positions), m = len(prevPositions)
-  cdef ndarray[double, ndim=2] newCoords = numpy.empty((len(positions), 3), float)
-
-  for i in range(n):
-    #find closest old positions for coordinate interpolation
-    p1 = 0
-    dMin = positions[i]-prevPositions[0]
-
-    for j in range(1,m):
-      d = positions[i]-prevPositions[j]
-
-      if abs(d) < abs(dMin):
-        p1 = j
-        dMin = d #closest pos
-
-      elif abs(d) > abs(dMin): # Seq positions were in order
-        break
-
-    if dMin == 0: #new position coincides with an old position
-      p2 = p1
-
-    elif dMin > 0: #new pos is above p1
-      p2 = min(p1+1, m-1)
-
-    else: #new pos is below p1
-      p2 = p1
-      p1 = max(0, p1-1)
-      dMin = positions[i] - prevPositions[p1]
-
-    #calculate coordinates
-    if prevPositions[p2] == prevPositions[p1]:
-      newCoords[i, 0] = coords[p1, 0]
-      newCoords[i, 1] = coords[p1, 1]
-      newCoords[i, 2] = coords[p1, 2]
-
-    else: #interpolate
-      f = <float>dMin/<float>(prevPositions[p2]-prevPositions[p1])
-      g = 1.0 - f
-
-      newCoords[i, 0] = g * coords[p1, 0] + f * coords[p2, 0]
-      newCoords[i, 1] = g * coords[p1, 1] + f * coords[p2, 1]
-      newCoords[i, 2] = g * coords[p1, 2] + f * coords[p2, 2]
-
-  return newCoords
-
-
 def runDynamics(ndarray[double, ndim=2] coords,
                 ndarray[double, ndim=1] masses,
                 ndarray[double, ndim=1] radii,

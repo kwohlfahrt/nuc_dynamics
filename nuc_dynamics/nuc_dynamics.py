@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from .nuc_cython import (runDynamics, getSupportedPairs, Restraint, getInterpolatedCoords)
+from .nuc_cython import (runDynamics, getSupportedPairs, Restraint)
 
 def load_ncc_file(file_path):
   """Load chromosome and contact data from NCC format file, as output from NucProcess"""
@@ -257,8 +257,8 @@ def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, partic
       struc_dists = []
 
       for m in range(len(coords_a)):
-        coord_data_a = getInterpolatedCoords(coords_a[m], contact_pos_a, particle_seq_pos[chr_a])
-        coord_data_b = getInterpolatedCoords(coords_b[m], contact_pos_b, particle_seq_pos[chr_b])
+        coord_data_a = get_interpolated_coords(coords_a[m], contact_pos_a, particle_seq_pos[chr_a])
+        coord_data_b = get_interpolated_coords(coords_b[m], contact_pos_b, particle_seq_pos[chr_b])
 
         deltas = coord_data_a - coord_data_b
         dists = sqrt((deltas*deltas).sum(axis=1))
@@ -287,6 +287,13 @@ def get_random_coords(shape, radius=10.0):
   x = random.normal(size=shape + (3,))
   scaling = (radius * u ** (1/3)) / norm(x, axis=-1)
   return scaling[..., None] * x
+
+
+def get_interpolated_coords(coords, pos, prev_pos):
+  from numpy import interp, apply_along_axis
+  from functools import partial
+
+  return apply_along_axis(partial(interp, pos, prev_pos), 0, coords)
 
 
 def unpack_chromo_coords(coords, chromosomes, seq_pos_dict):
@@ -462,9 +469,8 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
         coords[chr] = get_random_coords((num_models, len(seq_pos_dict[chr])),
                                         random_radius * bead_size)
       elif coords[chr].shape[1] != len(seq_pos_dict[chr]):
-        coords[chr] = stack([getInterpolatedCoords(coords[chr][i],
-                                                   seq_pos_dict[chr],
-                                                   prev_seq_pos_dict[chr])
+        coords[chr] = stack([get_interpolated_coords(coords[chr][i], seq_pos_dict[chr],
+                                                     prev_seq_pos_dict[chr])
                              for i in range(num_models)])
 
     # Equal unit masses and radii for all particles
