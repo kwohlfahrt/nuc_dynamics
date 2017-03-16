@@ -108,3 +108,39 @@ def test_calc_restraints():
         np.testing.assert_allclose(expected[key]['dists'], restraints['dists'])
         np.testing.assert_array_equal(expected[key]['ambiguity'], restraints['ambiguity'])
         np.testing.assert_allclose(expected[key]['weight'], restraints['weight'])
+
+def test_get_interpolated_coords():
+    from nuc_dynamics.nuc_cython import getInterpolatedCoords
+
+    prev_seq_pos = np.arange(5, 15, 2, dtype='int32')
+    seq_pos = np.arange(5, 15, 1, dtype='int32')
+    coords = np.array([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0],
+                       [4.0, 6.0, 6.0], [3.0, 7.0, 9.5],
+                       [5.5, 8.0, 6.0]], dtype='float64')
+    expected = np.array([[ 1.0, 2.0, 3.0], [ 1.5 , 3.0, 4.5 ],
+                         [ 2.0, 4.0, 6.0], [ 3.0 , 5.0, 6.0 ],
+                         [ 4.0, 6.0, 6.0], [ 3.5 , 6.5, 7.75],
+                         [ 3.0, 7.0, 9.5], [ 4.25, 7.5, 7.75],
+                         [ 5.5, 8.0, 6.0], [ 5.5 , 8.0, 6.0 ],])
+
+    result = getInterpolatedCoords(coords, seq_pos, prev_seq_pos)
+    np.testing.assert_array_equal(result, expected)
+
+def test_get_interpolated_coords_edge():
+    from nuc_dynamics.nuc_cython import getInterpolatedCoords
+
+    prev_seq_pos = np.arange(5, 15, 2, dtype='int32')
+    seq_pos = np.arange(8, 18, 1, dtype='int32')
+    coords = np.array([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0],
+                       [4.0, 6.0, 6.0], [3.0, 7.0, 9.5],
+                       [5.5, 8.0, 6.0]], dtype='float64')
+
+    expected = np.array([[ 3.0 , 5.0, 6.0 ], [ 4.0, 6.0, 6.0],
+                         [ 3.5 , 6.5, 7.75], [ 3.0, 7.0, 9.5],
+                         [ 4.25, 7.5, 7.75], [ 5.5, 8.0, 6.0],
+                         [ 5.5 , 8.0, 6.0 ], [ 5.5, 8.0, 6.0],
+                         [ 5.5 , 8.0, 6.0 ], [ 5.5, 8.0, 6.0],])
+
+
+    result = getInterpolatedCoords(coords, seq_pos, prev_seq_pos)
+    np.testing.assert_array_equal(result, expected)
