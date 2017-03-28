@@ -462,6 +462,11 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
     restraint_dict = calc_restraints(contact_dict, seq_pos_dict, scale=bead_size,
                                      lower=contact_dist[0], upper=contact_dist[1])
 
+    # Adjust to keep force/particle approximately constant
+    dist = 215.0 * (sum(map(len, seq_pos_dict.values())) /
+                    sum(map(lambda v: v['weight'].sum(),
+                            flatten_dict(restraint_dict).values())))
+
     for chr in chromosomes:
       backbone = backbone_restraints(seq_pos_dict[chr], particle_size, bead_size,
                                      backbone_dist[0], backbone_dist[1])
@@ -513,7 +518,7 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
         # Update coordinates for this temp
         dt = runDynamics(model_coords, masses, radii, restraint_indices, restraint_dists,
                          restraint_weights, ambiguity, temp, time_step, dynamics_steps, repulse,
-                         repDist=1.5 * bead_size)
+                         dist, repDist=1.5 * bead_size)
 
         time_taken += dt
 
