@@ -112,56 +112,28 @@ def getStats(ndarray[int,   ndim=2] restIndices,
   return nViol, sqrt(s/nRest)
 
 
-cdef void updateMotion(ndarray[double, ndim=1] masses,
-                       ndarray[double, ndim=2] forces,
-                       ndarray[double, ndim=2] accel,
-                       ndarray[double, ndim=2] veloc,
-                       ndarray[double, ndim=2] coords,
-                       int nCoords, double tRef,
-                       double tStep, double beta):
-
-  cdef int i
-  cdef double r, rtStep, temp
-
-  rtStep = 0.5 * tStep * tStep
-  temp = getTemp(masses, veloc, nCoords)
-  temp = max(temp, 0.001)
-  r = beta * (tRef/temp-1.0)
-
-  for i in range(nCoords):
-
-    accel[i,0] = forces[i,0] / masses[i] + r * veloc[i,0]
-    accel[i,1] = forces[i,1] / masses[i] + r * veloc[i,1]
-    accel[i,2] = forces[i,2] / masses[i] + r * veloc[i,2]
-
-    coords[i,0] += tStep * veloc[i,0] + rtStep * accel[i,0]
-    coords[i,1] += tStep * veloc[i,1] + rtStep * accel[i,1]
-    coords[i,2] += tStep * veloc[i,2] + rtStep * accel[i,2]
-
-    veloc[i,0] += tStep * accel[i,0]
-    veloc[i,1] += tStep * accel[i,1]
-    veloc[i,2] += tStep * accel[i,2]
-
-
-cdef void updateVelocity(ndarray[double, ndim=1] masses,
+cdef void updateMomentum(ndarray[double, ndim=2] momentum,
+                         ndarray[double, ndim=1] masses,
                          ndarray[double, ndim=2] forces,
-                         ndarray[double, ndim=2] accel,
-                         ndarray[double, ndim=2] veloc,
-                         int nCoords, double tRef,
-                         double tStep, double beta):
-
+                         int nCoords, double tStep):
   cdef int i
-  cdef double r, temp
-
-  temp = getTemp(masses, veloc, nCoords)
-  #avoid division by 0 temperature
-  temp = max(temp, 0.001)
-  r = beta * (tRef/temp-1.0)
 
   for i in range(nCoords):
-    veloc[i,0] += 0.5 * tStep * (forces[i,0] / masses[i] + r * veloc[i,0] - accel[i,0])
-    veloc[i,1] += 0.5 * tStep * (forces[i,1] / masses[i] + r * veloc[i,1] - accel[i,1])
-    veloc[i,2] += 0.5 * tStep * (forces[i,2] / masses[i] + r * veloc[i,2] - accel[i,2])
+    momentum[i,0] += forces[i,0] * tStep / 2.0
+    momentum[i,1] += forces[i,1] * tStep / 2.0
+    momentum[i,2] += forces[i,2] * tStep / 2.0
+
+
+cdef void updatePosition(ndarray[double, ndim=2] coords,
+                         ndarray[double, ndim=2] momentum,
+                         int nCoords, double tStep):
+
+  cdef int i
+
+  for i in range(nCoords):
+    coords[i,0] += tStep * momentum[i, 0]
+    coords[i,1] += tStep * momentum[i, 0]
+    coords[i,2] += tStep * momentum[i, 0]
 
 
 cdef double getRepulsiveForce(ndarray[int,   ndim=2] repList,
@@ -361,12 +333,11 @@ def runDynamics(ndarray[double, ndim=2] coords,
   tStep0 = tStep * tot0
   beta /= tot0
 
-  cdef ndarray[double, ndim=2] veloc = numpy.random.normal(0.0, 1.0, (nCoords, 3))
-  veloc *= sqrt(tRef / getTemp(masses, veloc, nCoords))
+  cdef ndarray[double, ndim=2] momentum = numpy.random.normal(0.0, 1.0, (nCoords, 3))
+  # TODO: normalize to temperature
 
   cdef ndarray[int, ndim=2] repList = numpy.empty((0, 2), numpy.int32)
   cdef ndarray[double, ndim=2] coordsPrev = numpy.array(coords)
-  cdef ndarray[double, ndim=2] accel = numpy.zeros((nCoords, 3))
   cdef ndarray[double, ndim=2] forces = numpy.zeros((nCoords, 3))
 
   cdef double t0 = time.time()
@@ -399,21 +370,23 @@ def runDynamics(ndarray[double, ndim=2] coords,
           coordsPrev[i,2] = coords[i,2]
         break # Already re-calculated, no need to check more
 
-    updateMotion(masses, forces, accel, veloc, coords, nCoords, tRef, tStep0, beta)
+    updateMomentum(momentum, forces, masses, nCoords, tStep0)
 
     for i in range(nCoords):
       forces[i,0] = 0.0
       forces[i,1] = 0.0
       forces[i,2] = 0.0
 
+    updatePosition(coords, momentum, nCoords, tStep0)
+
     fRep  = getRepulsiveForce(repList, forces, coords, nRep, fConstR, radii)
     fDist = getRestraintForce(forces, coords, restIndices, restLimits,
                               restWeight, restAmbig, nRest, fConstD)
 
-    updateVelocity(masses, forces, accel, veloc, nCoords, tRef, tStep0,  beta)
+    updateMomentum(momentum, forces, masses, nCoords, tStep0)
 
     if (printInterval > 0) and step % printInterval == 0:
-      temp = getTemp(masses, veloc, nCoords)
+      temp = getTemp(masses, momentum, nCoords)
       nViol, rmsd = getStats(restIndices, restLimits, coords, nRest)
 
       data = (temp, fRep, fDist, rmsd, nViol, nRep)
