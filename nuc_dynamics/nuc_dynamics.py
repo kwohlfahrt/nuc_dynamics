@@ -434,7 +434,7 @@ def calc_restraints(contact_dict, pos_dict,
 
 
 def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coords=None,
-                  scaling_exponent=0.0, contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
+                  contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
                   temp_range=(5000.0, 10.0), temp_steps=500, dynamics_steps=100, time_step=0.001,
                   random_seed=None, random_radius=10.0, num_models=1):
     """
@@ -450,7 +450,7 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
     from functools import partial
     import gc
 
-    bead_size = particle_size ** scaling_exponent
+    bead_size = particle_size ** (1/3)
 
     if random_seed is not None:
       random.seed(random_seed)
@@ -576,8 +576,6 @@ def main(args=None):
     parser.add_argument("--particle-sizes", type=float, nargs='+',
                         default=[8e6, 4e6, 2e6, 4e5, 2e5, 1e5],
                         help="The resolutions to calculate structures at")
-    parser.add_argument("--scaling-exponent", type=float, default=0.0,
-                        help="The exponent relating bead-size to particle-size")
     parser.add_argument("--models", type=int, default=1,
                         help="The number of models to calculate")
     parser.add_argument("--contact-dist", type=float, nargs=2, default=(0.8, 1.2),
@@ -605,7 +603,7 @@ def main(args=None):
     contacts = remove_isolated_contacts(contacts, threshold=args.isolated_threshold)
 
     coords, seq_pos, restraints = hierarchical_annealing(
-        contacts, args.particle_sizes, scaling_exponent=args.scaling_exponent,
+        contacts, args.particle_sizes,
         contact_dist=args.contact_dist, backbone_dist=args.backbone_dist,
         # Cautious annealing parameters
         # Don' need to be fixed, but are for simplicity
