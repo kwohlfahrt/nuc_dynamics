@@ -373,6 +373,7 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
     masses = {chr: ones(len(pos), float) for chr, pos in seq_pos_dict.items()}
     radii = {chr: full(len(pos), bead_size, float)
              for chr, pos in seq_pos_dict.items()}
+    repDists = {chr: r * 0.75 for chr, r in radii.items()}
 
     # Concatenate chromosomal data into a single array of particle restraints
     # for structure calculation.
@@ -382,6 +383,7 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
     coords = concatenate([coords[chr] for chr in chromosomes], axis=1)
     masses = concatenate([masses[chr] for chr in chromosomes])
     radii = concatenate([radii[chr] for chr in chromosomes])
+    repDists = concatenate([repDists[chr] for chr in chromosomes])
 
     restraint_order = argsort(ambiguity_groups)
     restraint_indices = restraint_indices[restraint_order]
@@ -403,9 +405,11 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
         gc.collect() # Try to free some memory
 
         # Update coordinates for this temp
-        dt = runDynamics(model_coords, masses, radii, restraint_indices, restraint_dists,
-                         restraint_weights, ambiguity, temp, time_step, dynamics_steps, repulse,
-                         dist, repDist=1.5 * bead_size)
+        dt = runDynamics(
+          model_coords, masses, radii, repDists,
+          restraint_indices, restraint_dists, restraint_weights, ambiguity,
+          temp, time_step, dynamics_steps, repulse, dist
+        )
 
         time_taken += dt
 

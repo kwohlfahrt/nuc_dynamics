@@ -19,7 +19,7 @@ class NucCythonError(Exception):
 
 cdef int getRepulsionList(ndarray[int,   ndim=2] repList,
                           ndarray[double, ndim=2] coords,
-                          double repDist,
+                          ndarray[double, ndim=1] repDists,
                           ndarray[double, ndim=1] radii):
 
   cdef int i, j
@@ -30,7 +30,7 @@ cdef int getRepulsionList(ndarray[int,   ndim=2] repList,
 
   for i in range(len(coords)-2):
     for j in range(i+2, len(coords)):
-      distLim = repDist + radii[i] + radii[j]
+      distLim = repDists[i] + radii[i] + repDists[j] + radii[j]
       distLim2 = distLim * distLim
 
       dx = coords[i,0] - coords[j,0]
@@ -350,13 +350,13 @@ def getSupportedPairs(ndarray[int, ndim=2] positions,
 def runDynamics(ndarray[double, ndim=2] coords,
                 ndarray[double, ndim=1] masses,
                 ndarray[double, ndim=1] radii,
+                ndarray[double, ndim=1] repDists,
                 ndarray[int, ndim=2] restIndices,
                 ndarray[double, ndim=2] restLimits,
                 ndarray[double, ndim=1] restWeight,
                 ndarray[int, ndim=1] restAmbig,
                 double tRef=1000.0, double tStep=0.001, int nSteps=1000,
                 double fConstR=1.0, double fConstD=25.0, double beta=10.0,
-                double repDist=1.5, # A heuristic to limit the repulsion list
                 double tTaken=0.0, int printInterval=10000,
                 double tot0=20.458):
 
@@ -386,7 +386,7 @@ def runDynamics(ndarray[double, ndim=2] coords,
   cdef int i, j, n, step, nViol, nRep = 0
 
   cdef double d2, dx, dy, dz, ek, rmsd, tStep0, temp, fDist, fRep
-  cdef double deltaLim = 0.25 * repDist * repDist
+  cdef ndarray[double, ndim=1] deltaLim = repDists * repDists
   cdef double Langevin_gamma
 
   tStep0 = tStep * tot0
@@ -402,10 +402,10 @@ def runDynamics(ndarray[double, ndim=2] coords,
 
   cdef double t0 = time.time()
 
-  nRep = getRepulsionList(repList, coords, repDist, radii)
+  nRep = getRepulsionList(repList, coords, repDists, radii)
   # Allocate with some padding
   repList = numpy.resize(repList, (int(nRep * 1.2), 2))
-  nRep = getRepulsionList(repList, coords, repDist, radii)
+  nRep = getRepulsionList(repList, coords, repDists, radii)
 
   fRep = getRepulsiveForce(repList, forces, coords, nRep,  fConstR, radii)
   fDist = getRestraintForce(forces, coords, restIndices, restLimits,
@@ -416,11 +416,11 @@ def runDynamics(ndarray[double, ndim=2] coords,
       dx = coords[i,0] - coordsPrev[i,0]
       dy = coords[i,1] - coordsPrev[i,1]
       dz = coords[i,2] - coordsPrev[i,2]
-      if dx*dx + dy*dy + dz*dz > deltaLim:
-        nRep = getRepulsionList(repList, coords, repDist, radii)
+      if dx*dx + dy*dy + dz*dz > deltaLim[i]:
+        nRep = getRepulsionList(repList, coords, repDists, radii)
         if nRep > len(repList):
           repList = numpy.resize(repList, (int(nRep * 1.2), 2))
-          nRep = getRepulsionList(repList, coords, repDist, radii)
+          nRep = getRepulsionList(repList, coords, repDists, radii)
         elif nRep < (len(repList) // 2):
           repList = numpy.resize(repList, (int(nRep * 1.2), 2))
 
