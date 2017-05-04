@@ -70,7 +70,7 @@ def getStats(ndarray[int,   ndim=2] restIndices,
 
 
 def runDynamics(ctx, cq, kernels, collider,
-                coords_buf, masses_buf, radii_buf, repDists_buf, int nCoords,
+                coords_buf, masses_buf, radii_buf, int nCoords,
                 restIndices_buf, restLimits_buf, restWeights_buf, int nRest,
                 restAmbig_buf, int nAmbig,
                 double tRef=1000.0, double tStep=0.001, int nSteps=1000,
@@ -97,10 +97,6 @@ def runDynamics(ctx, cq, kernels, collider,
     cq, radii_buf, cl.map_flags.READ,
     0, nCoords, dtype('float64'), is_blocking=False
   )
-  (repDists, _) = cl.enqueue_map_buffer(
-    cq, repDists_buf, cl.map_flags.READ,
-    0, nCoords, dtype('float64'), is_blocking=False
-  )
   (restLimits, _) = cl.enqueue_map_buffer(
     cq, restLimits_buf, cl.map_flags.READ,
     0, (nRest, 2), dtype('float64'), is_blocking=False
@@ -122,19 +118,8 @@ def runDynamics(ctx, cq, kernels, collider,
     ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_WRITE,
     nCoords * 3 * dtype('double').itemsize
   )
-  coordsPrev_buf = cl.Buffer(
-    ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_ONLY,
-    nCoords * 3 * dtype('double').itemsize
-  )
-  deltaLim_buf = cl.Buffer(
-    ctx, cl.mem_flags.HOST_WRITE_ONLY | cl.mem_flags.READ_ONLY,
-    nCoords * dtype('double').itemsize
-  )
   nRep_buf = cl.Buffer(
     ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_WRITE, dtype('int32').itemsize
-  )
-  recalcRep_buf = cl.Buffer(
-    ctx, cl.mem_flags.READ_WRITE, dtype('int32').itemsize
   )
 
   cl.enqueue_fill_buffer(
@@ -145,21 +130,11 @@ def runDynamics(ctx, cq, kernels, collider,
     cq, forces_buf, numpy.zeros(1, dtype='float64'),
     0, nCoords * 3 * dtype('float64').itemsize
   )
-  e = cl.enqueue_copy(
-    cq, coordsPrev_buf, coords_buf, byte_count=nCoords * 3 * dtype('double').itemsize
-  )
   (veloc, _) = cl.enqueue_map_buffer(
     cq, veloc_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
     0, (nCoords, 3), dtype('float64'), is_blocking=False
   )
-  (deltaLim, _) = cl.enqueue_map_buffer(
-    cq, veloc_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
-    0, nCoords, dtype('float64'), is_blocking=False
-  )
   cl.wait_for_events([cl.enqueue_barrier(cq)])
-
-  deltaLim[...] = (repDists - radii) ** 2
-  del deltaLim
 
   veloc[...] = numpy.random.normal(0.0, 1.0, (nCoords, 3))
   veloc *= sqrt(tRef / getTemp(masses, veloc, nCoords))
@@ -170,7 +145,7 @@ def runDynamics(ctx, cq, kernels, collider,
   cdef double t0 = time.time()
   cdef double r # for use as kernel parameter
 
-  e = collider.get_collisions(cq, coords_buf, repDists_buf, nRep_buf, None, 0)
+  e = collider.get_collisions(cq, coords_buf, radii_buf, nRep_buf, None, 0)
   (nRep, _) = cl.enqueue_map_buffer(
     cq, nRep_buf, cl.map_flags.READ,
     0, 1, dtype('int32'), wait_for=[e], is_blocking=True,
@@ -182,7 +157,7 @@ def runDynamics(ctx, cq, kernels, collider,
     nRepMax * 2 * dtype('int32').itemsize
   )
   e = collider.get_collisions(
-    cq, coords_buf, repDists_buf, nRep_buf, repList_buf, nRepMax, [e]
+    cq, coords_buf, radii_buf, nRep_buf, repList_buf, nRepMax, [e]
   )
   (nRep, _) = cl.enqueue_map_buffer(
     cq, nRep_buf, cl.map_flags.READ,
@@ -202,57 +177,40 @@ def runDynamics(ctx, cq, kernels, collider,
   cl.wait_for_events([cl.enqueue_barrier(cq)])
 
   for step in range(nSteps):
-    e = cl.enqueue_fill_buffer(
-      cq, recalcRep_buf, numpy.zeros(1, dtype='int32'), 0, dtype('int32').itemsize
+    del nRep
+    e = collider.get_collisions(
+      cq, coords_buf, radii_buf, nRep_buf, repList_buf, nRepMax, [e]
     )
-    e = kernels['testDelta'](
-      cq, (nCoords,), None,
-      coords_buf, coordsPrev_buf, deltaLim_buf, recalcRep_buf,
-      wait_for=[e]
+    (nRep, _) = cl.enqueue_map_buffer(
+      cq, nRep_buf, cl.map_flags.READ,
+      0, 1, dtype('int32'), wait_for=[e], is_blocking=True,
     )
-    (recalcRep, _) = cl.enqueue_map_buffer(
-      cq, recalcRep_buf, cl.map_flags.READ | cl.map_flags.WRITE,
-      0, 1, dtype('int32'), is_blocking=True, wait_for=[e]
-    )
-
-    if recalcRep[0]:
+    if nRep[0] > nRepMax:
+      nRepMax = int(nRep[0] * 1.2)
       del nRep
+      repList_buf = cl.Buffer(
+        ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_WRITE,
+        nRepMax * 2 * dtype('int32').itemsize
+      )
       e = collider.get_collisions(
-        cq, coords_buf, repDists_buf, nRep_buf, repList_buf, nRepMax, [e]
+        cq, coords_buf, radii_buf, nRep_buf, repList_buf, nRepMax, [e]
       )
       (nRep, _) = cl.enqueue_map_buffer(
         cq, nRep_buf, cl.map_flags.READ,
         0, 1, dtype('int32'), wait_for=[e], is_blocking=True,
       )
-      if nRep[0] > nRepMax:
-        nRepMax = int(nRep[0] * 1.2)
-        del nRep
-        repList_buf = cl.Buffer(
-          ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_WRITE,
-          nRepMax * 2 * dtype('int32').itemsize
-        )
-        e = collider.get_collisions(
-          cq, coords_buf, repDists_buf, nRep_buf, repList_buf, nRepMax, [e]
-        )
-        (nRep, _) = cl.enqueue_map_buffer(
-          cq, nRep_buf, cl.map_flags.READ,
-          0, 1, dtype('int32'), wait_for=[e], is_blocking=True,
-        )
-      elif nRep[0] < (nRepMax // 2):
-        nRepMax = int(nRep[0] * 1.2)
-        old_repList_buf = repList_buf
-        repList_buf = cl.Buffer(
-          ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
-          nRepMax * 2 * dtype('int32').itemsize
-        )
-        cl.enqueue_copy(
-          cq, repList_buf, old_repList_buf,
-          byte_count=nRep[0] * 2 * dtype('int32').itemsize
-        )
-        del old_repList_buf
-      e = cl.enqueue_copy(cq, coordsPrev_buf, coords_buf,
-                          byte_count=nCoords * 3 * dtype('double').itemsize)
-    del recalcRep
+    elif nRep[0] < (nRepMax // 2):
+      nRepMax = int(nRep[0] * 1.2)
+      old_repList_buf = repList_buf
+      repList_buf = cl.Buffer(
+        ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+        nRepMax * 2 * dtype('int32').itemsize
+      )
+      cl.enqueue_copy(
+        cq, repList_buf, old_repList_buf,
+        byte_count=nRep[0] * 2 * dtype('int32').itemsize
+      )
+      del old_repList_buf
 
     r = beta * (tRef / max(getTemp(masses, veloc, nCoords), 0.001) - 1.0)
     del veloc

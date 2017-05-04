@@ -151,14 +151,3 @@ kernel void getRestraintForce(global const int * const restIndices,
         }
     }
 }
-
-kernel void testDelta(global const double * const coords,
-                      global const double * const coordsPrev,
-                      global const double * const deltaLims,
-                      global int * const flag) {
-    const size_t i = get_global_id(0);
-
-    const double3 dist = vload3(i, coords) - vload3(i, coordsPrev);
-    const double dist2 = dot(dist, dist);
-    atomic_or(flag, dist2 > deltaLims[i]);
-}
