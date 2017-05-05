@@ -664,8 +664,19 @@ def main(args=None):
     from sys import argv
     from numpy import concatenate, array
 
+    # Monkey patch call for timing
+    from collections import defaultdict
+    profile = defaultdict(float)
+    tmp = cl.Kernel.__call__
+    def wrapper(self, *args, **kwargs):
+        e = tmp(self, *args, **kwargs)
+        cl.wait_for_events([e])
+        profile[self.function_name] += e.profile.end - e.profile.start
+        return e
+    cl.Kernel.__call__ = wrapper
+
     ctx = cl.create_some_context()
-    cq = cl.CommandQueue(ctx)
+    cq = cl.CommandQueue(ctx, properties=cl.command_queue_properties.PROFILING_ENABLE)
     kernels = compile_kernels(ctx)
 
     parser = ArgumentParser(description="Calculate a structure from a contact file.")
@@ -740,6 +751,10 @@ def main(args=None):
                  if k not in {'image', 'contacts'}}
     export_nuc_coords(str(args.output), coords, seq_pos, restraints, calc_args)
     print('Saved structure file to: %s' % str(args.output))
+
+    from itertools import starmap
+    timings = sorted(profile.items(), key=lambda x: -x[1])
+    print(*starmap("{:<20}: {:>12}".format, timings), sep='\n')
 
 if __name__ == "__main__":
     main()
