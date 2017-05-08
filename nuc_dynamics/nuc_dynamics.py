@@ -9,39 +9,37 @@ def load_ncc_file(file_path):
 
   if file_path.endswith('.gz'):
     import gzip
-    file_obj = gzip.open(file_path)
-
+    f_open = gzip.open
   else:
-    file_obj = open(file_path)
+    f_open = open
 
   contact_dict = {}
 
-  for line in file_obj:
-    chr_a, f_start_a, f_end_a, start_a, end_a, strand_a, chr_b, f_start_b, f_end_b, start_b, end_b, strand_b, ambig_group, pair_id, swap_pair = line.split()
+  with f_open(file_path) as file_obj:
+    for line in file_obj:
+      chr_a, f_start_a, f_end_a, start_a, end_a, strand_a, chr_b, f_start_b, f_end_b, start_b, end_b, strand_b, ambig_group, pair_id, swap_pair = line.split()
 
-    if strand_a == '+':
-      pos_a = int(f_start_a)
-    else:
-      pos_a = int(f_end_a)
+      if strand_a == '+':
+        pos_a = int(f_start_a)
+      else:
+        pos_a = int(f_end_a)
 
-    if strand_b == '+':
-      pos_b = int(f_start_b)
-    else:
-      pos_b = int(f_end_b)
+      if strand_b == '+':
+        pos_b = int(f_start_b)
+      else:
+        pos_b = int(f_end_b)
 
-    if chr_a > chr_b:
-      chr_a, chr_b = chr_b, chr_a
-      pos_a, pos_b = pos_b, pos_a
+      if chr_a > chr_b:
+        chr_a, chr_b = chr_b, chr_a
+        pos_a, pos_b = pos_b, pos_a
 
-    if chr_a not in contact_dict:
-      contact_dict[chr_a] = {}
+      if chr_a not in contact_dict:
+        contact_dict[chr_a] = {}
 
-    if chr_b not in contact_dict[chr_a]:
-      contact_dict[chr_a][chr_b] = []
+      if chr_b not in contact_dict[chr_a]:
+        contact_dict[chr_a][chr_b] = []
 
-    contact_dict[chr_a][chr_b].append((pos_a, pos_b, int(ambig_group)))
-
-  file_obj.close()
+      contact_dict[chr_a][chr_b].append((pos_a, pos_b, int(ambig_group)))
 
   for chr_a in contact_dict:
     for chr_b in contact_dict[chr_a]:
