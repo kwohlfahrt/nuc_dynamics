@@ -263,32 +263,22 @@ def flatten_dict(d):
 
 def concatenate_restraints(restraint_dict, pos_dict):
   from itertools import accumulate, chain
-  from numpy import empty
+  from numpy import concatenate, array
   import operator as op
 
   chromosome_lengths = map(len, map(pos_dict.__getitem__, sorted(pos_dict)))
   chromosome_offsets = dict(zip(sorted(pos_dict),
                                 chain([0], accumulate(chromosome_lengths, op.add))))
+  flat_restraints = sorted(flatten_dict(restraint_dict).items())
 
-  flat_restraints = flatten_dict(restraint_dict)
-  restraint_lengths = map(len, map(flat_restraints.__getitem__, sorted(flat_restraints)))
-  restraint_offsets = dict(zip(sorted(flat_restraints),
-                               chain([0], accumulate(restraint_lengths, op.add))))
-  num_restraints = sum(map(len, flat_restraints.values()))
-
-  particle_indices = empty((num_restraints, 2), 'int32')
-  distances = empty((num_restraints, 2), 'float64')
-  ambiguity_groups = empty(num_restraints, 'int32')
-  weights = empty(num_restraints, 'float')
-
-  for (chr_a, chr_b), restraints in flat_restraints.items():
-    offset = restraint_offsets[chr_a, chr_b]
-    s = slice(offset, offset+len(restraints))
-    particle_indices[s, 0] = restraints['indices'][:, 0] + chromosome_offsets[chr_a]
-    particle_indices[s, 1] = restraints['indices'][:, 1] + chromosome_offsets[chr_b]
-    distances[s] = restraints['dists']
-    ambiguity_groups[s] = restraints['ambiguity']
-    weights[s] = restraints['weight']
+  particle_indices = concatenate([
+    restraints['indices'] + array([[chromosome_offsets[c] for c in chrs]], dtype='int32')
+    for chrs, restraints in flat_restraints
+  ])
+  distances, ambiguity_groups, weights = map(concatenate, (
+    [restraints[k] for _, restraints in flat_restraints]
+    for k in ['dists', 'ambiguity', 'weight']
+  ))
 
   return particle_indices, distances, weights, ambiguity_groups
 
