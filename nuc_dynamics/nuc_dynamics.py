@@ -19,15 +19,8 @@ def load_ncc_file(file_path):
     for line in file_obj:
       chr_a, f_start_a, f_end_a, start_a, end_a, strand_a, chr_b, f_start_b, f_end_b, start_b, end_b, strand_b, ambig_group, pair_id, swap_pair = line.split()
 
-      if strand_a == '+':
-        pos_a = int(f_start_a)
-      else:
-        pos_a = int(f_end_a)
-
-      if strand_b == '+':
-        pos_b = int(f_start_b)
-      else:
-        pos_b = int(f_end_b)
+      pos_a = int(f_start_a if strand_a == '+' else f_end_a)
+      pos_b = int(f_start_b if strand_b == '+' else f_end_b)
 
       if chr_a > chr_b:
         chr_a, chr_b = chr_b, chr_a
