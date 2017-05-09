@@ -285,19 +285,31 @@ def concatenate_restraints(restraint_dict, pos_dict):
 
 def calc_restraints(contact_dict, pos_dict,
                     scale=1.0, lower=0.8, upper=1.2, weight=1.0):
-  from numpy import empty, array, searchsorted
-  from collections import defaultdict
+  from numpy import array, searchsorted
+  from collections import defaultdict, Counter
+
+  dists = array([[lower, upper]]) * scale
+
+  group_idxs = defaultdict(list)
+  # Group indices by ambiguity group
+  for (chr_a, chr_b), (pos_a, pos_b, ambig) in flatten_dict(contact_dict).items():
+    idxs_a = searchsorted(pos_dict[chr_a], pos_a)
+    idxs_b = searchsorted(pos_dict[chr_b], pos_b)
+    for ambig, idx_a, idx_b in zip(ambig, idxs_a, idxs_b):
+      group_idxs[ambig].append(tuple(sorted([(chr_a, idx_a), (chr_b, idx_b)])))
+
+  # Merge identical ambiguity groups
+  group_counts = Counter(map(tuple, map(sorted, group_idxs.values())))
+
+  # Unpack into restraints by chromosome
+  restraints = defaultdict(list)
+  for ambig, (ends, n) in enumerate(sorted(group_counts.items()), start=1):
+    for (chr_a, idx_a), (chr_b, idx_b) in map(tuple, ends):
+      restraints[chr_a, chr_b].append(((idx_a, idx_b), dists, ambig, n * weight))
 
   r = defaultdict(dict)
-  for (chr_a, chr_b), contacts in flatten_dict(contact_dict).items():
-    pos_a, pos_b, ambig = contacts
-    restraints = empty(len(contacts.T), Restraint)
-    restraints['weight'] = weight
-    restraints['dists'] = array([[lower * scale, upper * scale]])
-    restraints['ambiguity'] = ambig
-    restraints['indices'][:, 0] = searchsorted(pos_dict[chr_a], pos_a)
-    restraints['indices'][:, 1] = searchsorted(pos_dict[chr_b], pos_b)
-    r[chr_a][chr_b] = restraints
+  for (chr_a, chr_b), rests in restraints.items():
+    r[chr_a][chr_b] = array(rests, dtype=Restraint)
   return dict(r)
 
 
