@@ -96,11 +96,11 @@ def test_calc_restraints():
                 'b': {'b': np.array([[ 50,  50, 4]], dtype='int').T}}
 
     expected = {'a': {'a': np.array([([ 2,  7], [0.8, 1.2], 0, 1.0),
-                                     ([ 1,  8], [0.8, 1.2], 0, 1.0),
-                                     ([ 0, 10], [0.8, 1.2], 0, 1.0)], dtype=Restraint),
-                      'b': np.array([([ 1,  4], [0.8, 1.2], 0, 1.0),
-                                     ([ 3,  1], [0.8, 1.2], 0, 1.0)], dtype=Restraint)},
-                'b': {'b': np.array([([ 1,  1], [0.8, 1.2], 0, 1.0)], dtype=Restraint)}}
+                                     ([ 1,  8], [0.8, 1.2], 1, 1.0),
+                                     ([ 0, 10], [0.8, 1.2], 1, 1.0)], dtype=Restraint),
+                      'b': np.array([([ 1,  4], [0.8, 1.2], 2, 1.0),
+                                     ([ 3,  1], [0.8, 1.2], 3, 1.0)], dtype=Restraint)},
+                'b': {'b': np.array([([ 1,  1], [0.8, 1.2], 4, 1.0)], dtype=Restraint)}}
     expected = flatten_dict(expected)
 
     for key, restraints in sorted(flatten_dict(calc_restraints(contacts, seq_pos)).items()):

@@ -294,7 +294,7 @@ def calc_restraints(contact_dict, pos_dict,
     restraints = empty(len(contacts.T), Restraint)
     restraints['weight'] = weight
     restraints['dists'] = array([[lower * scale, upper * scale]])
-    restraints['ambiguity'] = 0
+    restraints['ambiguity'] = ambig
     restraints['indices'][:, 0] = searchsorted(pos_dict[chr_a], pos_a)
     restraints['indices'][:, 1] = searchsorted(pos_dict[chr_b], pos_b)
     r[chr_a][chr_b] = restraints
