@@ -141,3 +141,18 @@ def test_get_interpolated_coords_edge():
 
     result = get_interpolated_coords(coords, seq_pos, prev_seq_pos)
     np.testing.assert_array_equal(result, expected)
+
+
+def test_calc_limits():
+    from nuc_dynamics import calc_limits
+
+    contacts = {'a': {'a': np.array([[10, 50, 0],
+                                     [45, 66, 0],]).T,
+                      'b': np.array([[ 5, 29, 0],
+                                     [86,  4, 0],]).T,},
+                'b': {'a': np.array([[10,  9, 0],
+                                     [ 6, 49, 0],]).T}}
+
+
+    expected = {'a': (5, 86), 'b': (4, 29)}
+    np.testing.assert_equal(calc_limits(contacts), expected)
