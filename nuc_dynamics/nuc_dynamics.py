@@ -43,31 +43,16 @@ def load_ncc_file(file_path):
 def calc_limits(contact_dict):
   chromo_limits = {}
 
-  for chr_a in contact_dict:
-    for chr_b in contact_dict[chr_a]:
-      contacts = contact_dict[chr_a][chr_b]
-      if contacts.shape[1] < 1:
-        continue
+  for chrs, contacts in flatten_dict(contact_dict).items():
+    if contacts.shape[1] < 1:
+      continue
 
-      seq_pos_a = contacts[0]
-      seq_pos_b = contacts[1]
+    for chr, seq_pos in zip(chrs, contacts):
+      min_pos = seq_pos.min()
+      max_pos = seq_pos.max()
 
-      min_a = min(seq_pos_a)
-      max_a = max(seq_pos_a)
-      min_b = min(seq_pos_b)
-      max_b = max(seq_pos_b)
-
-      if chr_a in chromo_limits:
-        prev_min, prev_max = chromo_limits[chr_a]
-        chromo_limits[chr_a] = [min(prev_min, min_a), max(prev_max, max_a)]
-      else:
-        chromo_limits[chr_a] = [min_a, max_a]
-
-      if chr_b in chromo_limits:
-        prev_min, prev_max = chromo_limits[chr_b]
-        chromo_limits[chr_b] = [min(prev_min, min_b), max(prev_max, max_b)]
-      else:
-        chromo_limits[chr_b] = [min_b, max_b]
+      prev_min, prev_max = chromo_limits.get(chr, (min_pos, max_pos))
+      chromo_limits[chr] = [min(prev_min, min_pos), max(prev_max, max_pos)]
   return chromo_limits
 
 
