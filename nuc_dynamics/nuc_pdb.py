@@ -135,9 +135,13 @@ def main(args=None):
     parser.add_argument("output", type=Path, help="The .pdb file to write")
     parser.add_argument("--structure", type=str, default="0",
                         help="The structure to save.")
+    parser.add_argument("--scale", type=float, default=0.1,
+                        help="The coordinate scaling (to avoid overflow of fixed columns)")
 
     args = parser.parse_args(argv[1:] if args is None else args)
-    export_pdb_coords(str(args.output), *load_nuc_file(args.input, args.structure))
+    coords, seq_pos, particle_size = load_nuc_file(args.input, args.structure)
+    coords = {k: v * args.scale for k, v in coords.items()}
+    export_pdb_coords(str(args.output), coords, seq_pos, particle_size)
 
 if __name__ == "__main__":
     main()
