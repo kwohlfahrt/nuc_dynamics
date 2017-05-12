@@ -215,13 +215,12 @@ def calc_bins(chromo_limits, particle_size):
   from math import ceil
 
   bins = {}
-  for chr, (start, end) in chromo_limits.items():
-    start = (start // particle_size) * particle_size
+  for chr, (_, end) in chromo_limits.items():
     end = (end // particle_size + bool(end % particle_size)) * particle_size
     # TODO (kjw53): Original uses ceil, then adds additional particle. Why?
     end += particle_size
 
-    bins[chr] = arange(start, end, particle_size, dtype='int32')
+    bins[chr] = arange(0, end, particle_size, dtype='int32')
   return bins
 
 
