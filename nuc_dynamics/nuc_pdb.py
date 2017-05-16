@@ -75,12 +75,12 @@ def export_pdb_coords(file_path, coords_dict, seq_pos_dict, particle_size,
                     if extended:
                         write(ExtendedHetAtom(
                             c, atom_name=('C', str(j)), residue=resName, chain=chain_code,
-                            sequence=seqMb, coords=coord, occupancy=0.0, seq_pos=seqPos
+                            sequence=seqMb, coords=coord, seq_pos=seqPos
                         ))
                     else:
                         write(HetAtom(
                             c, atom_name=('C', str(j)), residue=resName, chain=chain_code,
-                            sequence=seqMb, coords=coord, occupancy=0.0
+                            sequence=seqMb, coords=coord,
                         ))
             write(EndModel())
 
