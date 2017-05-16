@@ -8,7 +8,7 @@ header_template = [
     "REMARK 210 Atom number increases every {particle_size} bases",
     "REMARK 210 Residue code indicates chromosome",
     "REMARK 210 Residue number represents which sequence Mb the atom is in",
-    "REMARK 210 Chain letter is different every chromosome, where Chr1=A, Chr2=B etc.",
+    "REMARK 210 Chain letter is different every chromosome, where Chr1=A, Chr2=B...",
     "REMARK 210 Extended PDB format with particle seq. pos. in last column",
     "REMARK 210",
 ]
@@ -131,3 +131,35 @@ def test_export_pdb_coords_extended(tmpdir):
 
         with pytest.raises(StopIteration):
             next(f)
+
+
+def test_entry_padding():
+    from nuc_dynamics.nuc_pdb import Title
+    assert Title("Foo").padding == ['  ', '', '']
+
+
+def test_title():
+    from nuc_dynamics.nuc_pdb import Title
+    assert str(Title("Foo bar baz")) == pad("TITLE     Foo bar baz")[:-1]
+    assert str(Title("Foo bar baz", 2)) == pad("TITLE    2Foo bar baz")[:-1]
+    with pytest.raises(ValueError):
+        Title("Foo bar baz", 0)
+
+
+def test_hetatom():
+    from nuc_dynamics.nuc_pdb import HetAtom
+    het = HetAtom(
+        8238, ("S", ""), residue='SO4', chain='A', sequence=2001,
+        coords=[10.8849,-15.746,-14.404444], temp=47.84
+    )
+    expected = pad(
+        "HETATM 8238  S   SO4 A2001      10.885 -15.746 -14.404  1.00 47.84           S"
+    )[:-1]
+    assert str(het) == expected
+
+
+def test_hetatm_overflow():
+    from nuc_dynamics.nuc_pdb import HetAtom
+    HetAtom(8238, ("S", ""), coords=[10.8849,-15.746,1e3],)
+    with pytest.raises(ValueError):
+        HetAtom(8238, ("S", ""), coords=[10.8849,-15.746,1e4],)
