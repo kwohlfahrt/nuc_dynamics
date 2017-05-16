@@ -22,9 +22,6 @@ def export_pdb_coords(file_path, coords_dict, seq_pos_dict, particle_size,
     from .pdb.record import (Title, Remark, Model, EndModel, End, HetAtom, ExtendedHetAtom,
                              Connect)
 
-    alc = ' '
-    ins = ' '
-
     hetatm = ExtendedHetAtom if extended else HetAtom
 
     with file_path.open('w') as f:
@@ -59,10 +56,8 @@ def export_pdb_coords(file_path, coords_dict, seq_pos_dict, particle_size,
                     chain_code = ascii_lowercase[chromosomes.index(chromo)]
 
                 resName = chromo[:3]
-                if len(chromo) < 2:
-                    resName = resName.rjust(2, '_')
                 if len(chromo) < 3:
-                    resName = 'C' + resName
+                    resName = 'C' + resName.rjust(2, '_')
 
                 pos = seq_pos_dict[chromo]
                 coords = coords_dict[chromo][m]
@@ -73,16 +68,20 @@ def export_pdb_coords(file_path, coords_dict, seq_pos_dict, particle_size,
                     c += 1
 
                     seqMb = int(seqPos//1e6) + 1
+                    # Count atom number while sequence number is the same
                     j = j+1 if seqMb == seqPrev else 1
                     seqPrev = seqMb
 
-                    aName = ('C', str(j))
-
-                    data = [c,aName,alc,resName,chain_code,seqMb,ins,coord,0.0,0.0,0]
                     if extended:
-                        data.append(seqPos)
-                    write(hetatm(*data))
-
+                        write(ExtendedHetAtom(
+                            c, atom_name=('C', str(j)), residue=resName, chain=chain_code,
+                            sequence=seqMb, coords=coord, occupancy=0.0, seq_pos=seqPos
+                        ))
+                    else:
+                        write(HetAtom(
+                            c, atom_name=('C', str(j)), residue=resName, chain=chain_code,
+                            sequence=seqMb, coords=coord, occupancy=0.0
+                        ))
             write(EndModel())
 
         chromo_offsets = chain([0], accumulate(map(len, seq_pos_dict.values())))
