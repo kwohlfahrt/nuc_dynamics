@@ -144,15 +144,15 @@ def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, partic
 def get_random_coords(shape, radius=10.0):
   """
   Get random, uniformly sampled coorinate positions, restricted to
-  a sphere of given radius
+  a nD-sphere of given radius
   """
 
   from numpy import random
   from numpy.linalg import norm
 
-  u = random.uniform(size=shape)
-  x = random.normal(size=shape + (3,))
-  scaling = (radius * u ** (1/3)) / norm(x, axis=-1)
+  u = random.uniform(size=shape[:-1])
+  x = random.normal(size=shape)
+  scaling = (radius * u ** (1/shape[-1])) / norm(x, axis=-1)
   return scaling[..., None] * x
 
 
@@ -340,8 +340,9 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
     coords = start_coords or {}
     for chr in chromosomes:
       if chr not in coords:
-        coords[chr] = get_random_coords((num_models, len(seq_pos_dict[chr])),
-                                        random_radius * bead_size)
+        coords[chr] = get_random_coords(
+          (num_models, len(seq_pos_dict[chr]), 3), random_radius * bead_size
+        )
       elif coords[chr].shape[1] != len(seq_pos_dict[chr]):
         coords[chr] = stack([get_interpolated_coords(coords[chr][i], seq_pos_dict[chr],
                                                      prev_seq_pos_dict[chr])

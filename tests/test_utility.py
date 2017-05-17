@@ -6,9 +6,9 @@ def test_random_coords_shape():
 
     np.random.seed(4)
     radius = 10.0
-    shape = (5, 8)
+    shape = (5, 8, 3)
     coords = get_random_coords(shape, radius)
-    assert coords.shape == shape + (3,)
+    assert coords.shape == shape
 
 
 def test_random_coords_sphere():
@@ -16,7 +16,7 @@ def test_random_coords_sphere():
 
     np.random.seed(4)
     radius = 10.0
-    shape = (5, 8)
+    shape = (5, 8, 3)
     coords = get_random_coords(shape, radius)
 
     assert np.alltrue(np.linalg.norm(coords, axis=-1) <= radius)
