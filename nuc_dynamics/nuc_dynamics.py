@@ -160,7 +160,10 @@ def get_interpolated_coords(coords, pos, prev_pos):
   from numpy import interp, apply_along_axis
   from functools import partial
 
-  return apply_along_axis(partial(interp, pos, prev_pos), 0, coords)
+  *size, length, ndim = coords.shape
+  coords = coords.reshape((-1, length, ndim))
+  coords = apply_along_axis(partial(interp, pos, prev_pos), 1, coords)
+  return coords.reshape(size + [len(pos), ndim])
 
 
 def unpack_chromo_coords(coords, chromosomes, seq_pos_dict):
@@ -344,9 +347,9 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
           (num_models, len(seq_pos_dict[chr]), 3), random_radius * bead_size
         )
       elif coords[chr].shape[1] != len(seq_pos_dict[chr]):
-        coords[chr] = stack([get_interpolated_coords(coords[chr][i], seq_pos_dict[chr],
-                                                     prev_seq_pos_dict[chr])
-                             for i in range(num_models)])
+        coords[chr] = get_interpolated_coords(
+          coords[chr], seq_pos_dict[chr], prev_seq_pos_dict[chr]
+        )
 
     # Equal unit masses and radii for all particles
     masses = {chr: ones(len(pos), float) for chr, pos in seq_pos_dict.items()}

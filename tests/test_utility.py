@@ -122,6 +122,11 @@ def test_get_interpolated_coords():
 
     result = get_interpolated_coords(coords, seq_pos, prev_seq_pos)
     np.testing.assert_array_equal(result, expected)
+    result = get_interpolated_coords(
+        np.stack([coords, coords + 1]), seq_pos, prev_seq_pos
+    )
+    expected = np.stack([expected, expected + 1])
+    np.testing.assert_array_equal(result, expected)
 
 def test_get_interpolated_coords_edge():
     from nuc_dynamics import get_interpolated_coords
