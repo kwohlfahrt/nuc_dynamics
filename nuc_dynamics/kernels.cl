@@ -112,23 +112,20 @@ kernel void getRestraintForce(global const int * const restIndices,
     const double dmax = restLimits[i*2+1];
     const double distSwitch = dmax * switchRatio;
 
-    double ujk, rjk;
+    double rjk;
     if (r2 < (dmin*dmin)) {
         r2 = max(r2, 1e-8);
         double d = dmin - sqrt(r2);
-        ujk = fConst * d * d;
         rjk = fConst * exponent * d;
     } else if (r2 <= (dmax*dmax)) {
-        ujk = rjk = 0;
+        rjk = 0;
     } else if (r2 <= (dmax+distSwitch) * (dmax+distSwitch)) {
         double d = sqrt(r2) - dmax;
-        ujk = fConst * d * d;
         rjk = -fConst * exponent * d;
     } else {
         double b = distSwitch * distSwitch * distSwitch * exponent * (asymptote - 1);
         double a = distSwitch * distSwitch * (1 - 2*asymptote*exponent + exponent);
         double d = sqrt(r2) - dmax;
-        ujk = fConst * (a + asymptote*distSwitch*exponent*d + b/d);
         rjk = -fConst * (asymptote*distSwitch*exponent - b/(d*d));
     }
 
