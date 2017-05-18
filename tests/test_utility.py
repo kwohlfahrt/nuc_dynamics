@@ -23,6 +23,21 @@ def test_random_coords_sphere():
     assert not np.alltrue(np.linalg.norm(coords, axis=-1) <= radius * 0.5)
 
 
+def test_random_linear_coords():
+    from nuc_dynamics import get_random_linear_coords
+
+    np.random.seed(4)
+    radius = 10.0
+    bead_size = 2.0
+    shape = (5, 8, 3)
+    coords = get_random_linear_coords(shape, bead_size, radius)
+
+    testing.assert_array_less(np.linalg.norm(coords[:, :, :2], axis=-1), radius)
+    assert coords[:, :, 2].min() == -shape[1] * bead_size
+    assert coords[:, :, 2].max() == shape[1] * bead_size
+    assert coords[:, :, 2].mean() < 1e-15
+
+
 def test_ambiguity_offsets():
     from nuc_dynamics import calc_ambiguity_offsets
 

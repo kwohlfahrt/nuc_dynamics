@@ -166,6 +166,19 @@ def get_random_coords(shape, radius=10.0):
   return scaling[..., None] * x
 
 
+def get_random_linear_coords(shape, bead_size=1.0, radius=10.0):
+  from numpy import linspace, concatenate, broadcast_to
+
+  *size, chain_length, ndim = shape
+  midpoints = get_random_coords(size + [1, ndim-1], radius)
+  offsets = linspace(-1, 1, chain_length).reshape((1,) * len(size) + (chain_length, 1))
+  offsets *= chain_length * bead_size
+  return concatenate([
+    broadcast_to(midpoints, size + [chain_length, ndim-1]),
+    broadcast_to(offsets, size + [chain_length, 1])
+  ], axis=-1)
+
+
 def get_interpolated_coords(coords, pos, prev_pos):
   from numpy import interp, apply_along_axis
   from functools import partial
@@ -352,8 +365,8 @@ def anneal_genome(contact_dict, particle_size, prev_seq_pos_dict=None, start_coo
     coords = start_coords or {}
     for chr in chromosomes:
       if chr not in coords:
-        coords[chr] = get_random_coords(
-          (num_models, len(seq_pos_dict[chr]), 3), random_radius * bead_size
+        coords[chr] = get_random_linear_coords(
+          (num_models, len(seq_pos_dict[chr]), 3), bead_size, random_radius * bead_size
         )
       elif coords[chr].shape[1] != len(seq_pos_dict[chr]):
         coords[chr] = get_interpolated_coords(
