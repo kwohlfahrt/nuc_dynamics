@@ -213,14 +213,13 @@ def calc_ambiguity_offsets(groups):
   Convert (sorted) ambiguity groups to group-offsets for
   annealing calculations.
   """
-  from numpy import arange, zeros
+  from numpy import flatnonzero, zeros
 
-  offsets = arange(len(groups) + 1, dtype='int32')
-  group_starts = zeros(len(offsets), dtype='bool')
+  group_starts = zeros(len(groups) + 1, dtype='bool')
   group_starts[-1] = group_starts[0] = 1
   group_starts[:-1] |= groups == 0
   group_starts[1:-1] |= groups[1:] != groups[:-1]
-  return offsets[group_starts]
+  return flatnonzero(group_starts).astype('int32')
 
 
 def backbone_restraints(seq_pos, particle_size, scale=1.0, lower=0.1, upper=1.1, weight=1.0):
