@@ -126,10 +126,6 @@ def runDynamics(ctx, cq, kernels, collider,
     cq, accel_buf, numpy.zeros(1, dtype='float64'),
     0, nCoords * 3 * dtype('float64').itemsize
   )
-  cl.enqueue_fill_buffer(
-    cq, forces_buf, numpy.zeros(1, dtype='float64'),
-    0, nCoords * 3 * dtype('float64').itemsize
-  )
   (veloc, _) = cl.enqueue_map_buffer(
     cq, veloc_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
     0, (nCoords, 3), dtype('float64'), is_blocking=False
@@ -165,14 +161,20 @@ def runDynamics(ctx, cq, kernels, collider,
   )
   cl.wait_for_events([cl.enqueue_barrier(cq)])
 
+  zero_forces = cl.enqueue_fill_buffer(
+    cq, forces_buf, numpy.zeros(1, dtype='float64'),
+    0, nCoords * 3 * dtype('float64').itemsize
+  )
   e = kernels['getRepulsiveForce'](
     cq, (nRep,), None,
     repList_buf, forces_buf, coords_buf, radii_buf, masses_buf, fConstR,
+    wait_for=[zero_forces]
   )
   e = kernels['getRestraintForce'](
     cq, (nAmbig-1,), None,
     restIndices_buf, restLimits_buf, restWeights_buf, restAmbig_buf,
-    coords_buf, forces_buf, fConstD, 2.0, 0.5, 1.0
+    coords_buf, forces_buf, fConstD, 2.0, 0.5, 1.0,
+    wait_for=[zero_forces]
   )
   cl.wait_for_events([cl.enqueue_barrier(cq)])
 
@@ -223,20 +225,20 @@ def runDynamics(ctx, cq, kernels, collider,
       cq, veloc_buf, cl.map_flags.READ,
       0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
     )
-    e = cl.enqueue_fill_buffer(
+    zero_forces = cl.enqueue_fill_buffer(
       cq, forces_buf, numpy.zeros(1, dtype='float64'),
       0, nCoords * 3 * dtype('float64').itemsize, wait_for=[e]
     )
     e = kernels['getRepulsiveForce'](
       cq, (nRep,), None,
       repList_buf, forces_buf, coords_buf, radii_buf, masses_buf, fConstR,
-      wait_for=[e]
+      wait_for=[zero_forces]
     )
     e = kernels['getRestraintForce'](
       cq, (nAmbig-1,), None,
       restIndices_buf, restLimits_buf, restWeights_buf, restAmbig_buf,
       coords_buf, forces_buf, fConstD, 2.0, 0.5, 1.0,
-      wait_for=[e]
+      wait_for=[zero_forces]
     )
     cl.wait_for_events([cl.enqueue_barrier(cq)])
 
