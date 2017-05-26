@@ -34,7 +34,7 @@ kernel void updateMotion(global double * const coords,
 
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics: enable
 
-double atomic_fadd(volatile global double *p, double val) {
+double atom_fadd(volatile global double *p, double val) {
     // https://streamcomputing.eu/blog/2016-02-09/atomic-operations-for-floats-in-opencl-improved/
     union {
         unsigned long u;
@@ -47,6 +47,7 @@ double atomic_fadd(volatile global double *p, double val) {
         new.f = prev.f + val;
         current.u = atom_cmpxchg((volatile global unsigned long *) p, prev.u, new.u);
     } while (current.u != prev.u);
+    return current.f;
 }
 
 kernel void getRepulsiveForce(global const int * const repList,
@@ -77,8 +78,8 @@ kernel void getRepulsiveForce(global const int * const repList,
     const double rjk = 4 * fConst * (repDist2 - dist2);
     const size_t D = 3;
     for (size_t d = 0; d < D; d++){
-        atomic_fadd(&forces[j*D+d],-dists[d] * rjk);
-        atomic_fadd(&forces[k*D+d], dists[d] * rjk);
+        atom_fadd(&forces[j*D+d],-dists[d] * rjk);
+        atom_fadd(&forces[k*D+d], dists[d] * rjk);
     }
 }
 
@@ -137,8 +138,8 @@ kernel void getRestraintForce(global const int * const restIndices,
         const double t = rjk * pown(r, 5) / (s2 * s2 * s2) * restWeights[i+n];
         for (size_t d = 0; d < D; d++){
             const double dist = t * dists[d];
-            atomic_fadd(&forces[j*D+d], dist);
-            atomic_fadd(&forces[k*D+d],-dist);
+            atom_fadd(&forces[j*D+d], dist);
+            atom_fadd(&forces[k*D+d],-dist);
         }
     }
 }
