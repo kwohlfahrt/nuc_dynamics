@@ -14,6 +14,5 @@ setup(
     description="A tool to calculate a structure from Hi-C coordinates",
     packages=['nuc_dynamics'],
     ext_modules = cythonize(exts),
-    entry_points={'console_scripts': ['nuc_dynamics=nuc_dynamics:main',
-                                      'nuc_pdb=nuc_dynamics.nuc_pdb:main']}
+    entry_points={'console_scripts': ['nuc_dynamics=nuc_dynamics:main']}
 )
