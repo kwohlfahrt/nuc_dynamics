@@ -8,7 +8,7 @@ def load_nuc_file(file_path, structure="0"):
         structure = f["structures"][structure]
         coords = {k: v[()] for k, v in structure["coords"].items()}
         seq_pos = {k: v["positions"][()] for k, v in structure["particles"].items()}
-        particle_size = structure['calculation'].attrs["particle_sizes"][-1]
+        particle_size = structure['calculation'].attrs.get("particle_sizes", [1])[-1]
 
     return coords, seq_pos, particle_size
 
