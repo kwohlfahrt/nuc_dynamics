@@ -94,39 +94,33 @@ kernel void getRestraintForce(global const int * const restIndices,
     const size_t i = restAmbig[get_global_id(0)];
     const size_t nAmbig = restAmbig[get_global_id(0) + 1] - i;
 
-    double r2 = 0.0;
+    double r_4 = 0.0;
     for (size_t n = 0; n < nAmbig; n++){
         const size_t j = restIndices[(i+n)*2+0];
         const size_t k = restIndices[(i+n)*2+1];
         if (j == k)
             continue;
-        double r = 0.0;
-        r = distance(vload3(j, coords), vload3(k, coords));
-        r2 += 1.0 / pow(r, 4.0); // actually 1 / r4
+        const double3 dist = vload3(j, coords) - vload3(k, coords);
+        const double r2 = dot(dist, dist);
+        r_4 += 1.0 / (r2 * r2); // actually 1 / r4
     }
-    if (r2 <= 0)
-        return;
-    r2 = 1.0 / sqrt(r2); // now back to r2
+    const double r = pow(r_4, -0.25);
 
     const double dmin = restLimits[i*2+0];
     const double dmax = restLimits[i*2+1];
     const double distSwitch = dmax * switchRatio;
 
     double rjk;
-    if (r2 < (dmin*dmin)) {
-        r2 = max(r2, 1e-8);
-        double d = dmin - sqrt(r2);
+    if (r < dmin) {
+        double d = dmin - r;
         rjk = fConst * exponent * d;
-    } else if (r2 <= (dmax*dmax)) {
-        rjk = 0;
-    } else if (r2 <= (dmax+distSwitch) * (dmax+distSwitch)) {
-        double d = sqrt(r2) - dmax;
+    } else if (r <= dmax) {
+        return;
+    } else if (r <= dmax+distSwitch) {
+        double d = r - dmax;
         rjk = -fConst * exponent * d;
     } else {
-        double b = distSwitch * distSwitch * distSwitch * exponent * (asymptote - 1);
-        double a = distSwitch * distSwitch * (1 - 2*asymptote*exponent + exponent);
-        double d = sqrt(r2) - dmax;
-        rjk = -fConst * (asymptote*distSwitch*exponent - b/(d*d));
+        rjk = -fConst * exponent * distSwitch;
     }
 
     for (size_t n = 0; n < nAmbig; n++){
@@ -140,7 +134,7 @@ kernel void getRestraintForce(global const int * const restIndices,
         double dists[3];
         vstore3(dist, 0, dists);
         const double s2 = max(dot(dist, dist), 1e-8);
-        const double t = rjk * pow(r2, 2.5) / (s2 * s2 * s2) * restWeights[i+n];
+        const double t = rjk * pown(r, 5) / (s2 * s2 * s2) * restWeights[i+n];
         for (size_t d = 0; d < D; d++){
             const double dist = t * dists[d];
             atomic_fadd(&forces[j*D+d], dist);
