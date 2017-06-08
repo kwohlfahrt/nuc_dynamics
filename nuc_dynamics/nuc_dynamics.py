@@ -458,7 +458,7 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
             restraint_dict[chr_a][chr_b]['weight'] *= image_weight
 
     # Adjust to keep force/particle approximately constant
-    dist = 215.0 * (sum(map(len, seq_pos_dict.values())) /
+    dist = 430.0 * (sum(map(len, seq_pos_dict.values())) /
                     sum(map(lambda v: v['weight'].sum(),
                             flatten_dict(restraint_dict).values())))
 
@@ -648,7 +648,7 @@ def compile_kernels(ctx):
     [None, None, None, None, None, float64]
   )
   kernels['getRestraintForce'].set_scalar_arg_dtypes(
-    [None, None, None, None, None, None, float64, float64, float64, float64]
+    [None, None, None, None, None, None, float64, float64]
   )
   return kernels
 

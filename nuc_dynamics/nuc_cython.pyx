@@ -173,7 +173,7 @@ def runDynamics(ctx, cq, kernels, collider,
   e = kernels['getRestraintForce'](
     cq, (nAmbig-1,), None,
     restIndices_buf, restLimits_buf, restWeights_buf, restAmbig_buf,
-    coords_buf, forces_buf, fConstD, 2.0, 0.5, 1.0,
+    coords_buf, forces_buf, fConstD, 0.5,
     wait_for=[zero_forces]
   )
   cl.wait_for_events([cl.enqueue_barrier(cq)])
@@ -237,7 +237,7 @@ def runDynamics(ctx, cq, kernels, collider,
     e = kernels['getRestraintForce'](
       cq, (nAmbig-1,), None,
       restIndices_buf, restLimits_buf, restWeights_buf, restAmbig_buf,
-      coords_buf, forces_buf, fConstD, 2.0, 0.5, 1.0,
+      coords_buf, forces_buf, fConstD, 0.5,
       wait_for=[zero_forces]
     )
     cl.wait_for_events([cl.enqueue_barrier(cq)])

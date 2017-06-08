@@ -89,8 +89,7 @@ kernel void getRestraintForce(global const int * const restIndices,
                               global const int * const restAmbig,
                               global const double * const coords,
                               global double * const forces,
-                              const double fConst, const double exponent,
-                              const double switchRatio, const double asymptote) {
+                              const double fConst, const double switchRatio) {
     const size_t D = 3;
     const size_t i = restAmbig[get_global_id(0)];
     const size_t nAmbig = restAmbig[get_global_id(0) + 1] - i;
@@ -114,14 +113,14 @@ kernel void getRestraintForce(global const int * const restIndices,
     double rjk;
     if (r < dmin) {
         double d = dmin - r;
-        rjk = fConst * exponent * d;
+        rjk = fConst * d;
     } else if (r <= dmax) {
         return;
     } else if (r <= dmax+distSwitch) {
         double d = r - dmax;
-        rjk = -fConst * exponent * d;
+        rjk = -fConst * d;
     } else {
-        rjk = -fConst * exponent * distSwitch;
+        rjk = -fConst * distSwitch;
     }
 
     for (size_t n = 0; n < nAmbig; n++){
