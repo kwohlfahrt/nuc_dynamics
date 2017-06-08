@@ -5,10 +5,7 @@ kernel void updateVelocity(global double3 * const veloc,
                            const double tStep, const double r) {
     const size_t i = get_global_id(0);
 
-    const double3 old = veloc[i];
-    const double3 new =
-        old + 0.5 * tStep * (forces[i] / masses[i] + r * old - accel[i]);
-    veloc[i] = new;
+    veloc[i] += 0.5 * tStep * (forces[i] / masses[i] + r * veloc[i] - accel[i]);
 }
 
 kernel void updateMotion(global double3 * const coords,
@@ -19,17 +16,9 @@ kernel void updateMotion(global double3 * const coords,
                          const double tStep, const double r) {
     const size_t i = get_global_id(0);
 
-    const double3 old_veloc = veloc[i];
-    const double3 old_coords = coords[i];
-    const double3 new_accel =
-        forces[i] / masses[i] + r * old_veloc;
-    const double3 new_coords =
-        old_coords + tStep * old_veloc + 0.5 * tStep * tStep * new_accel;
-    const double3 new_veloc = old_veloc + tStep * new_accel;
-
-    accel[i] = new_accel;
-    coords[i] = new_coords;
-    veloc[i] = new_veloc;
+    accel[i] = forces[i] / masses[i] + r * veloc[i];
+    coords[i] += tStep * veloc[i] + 0.5 * tStep * tStep * accel[i];
+    veloc[i] += tStep * accel[i];
 }
 
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics: enable
