@@ -108,15 +108,15 @@ def runDynamics(ctx, cq, kernels, collider,
 
   accel_buf = cl.Buffer(
     ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_WRITE,
-    nCoords * 3 * dtype('double').itemsize
+    nCoords * 4 * dtype('double').itemsize
   )
   forces_buf = cl.Buffer(
     ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_WRITE,
-    nCoords * 3 * dtype('double').itemsize
+    nCoords * 4 * dtype('double').itemsize
   )
   veloc_buf = cl.Buffer(
     ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_WRITE,
-    nCoords * 3 * dtype('double').itemsize
+    nCoords * 4 * dtype('double').itemsize
   )
   nRep_buf = cl.Buffer(
     ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_WRITE, dtype('int32').itemsize
@@ -124,15 +124,15 @@ def runDynamics(ctx, cq, kernels, collider,
 
   cl.enqueue_fill_buffer(
     cq, accel_buf, numpy.zeros(1, dtype='float64'),
-    0, nCoords * 3 * dtype('float64').itemsize
+    0, nCoords * 4 * dtype('float64').itemsize
   )
   (veloc, _) = cl.enqueue_map_buffer(
     cq, veloc_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
-    0, (nCoords, 3), dtype('float64'), is_blocking=False
+    0, (nCoords, 4), dtype('float64'), is_blocking=False
   )
   cl.wait_for_events([cl.enqueue_barrier(cq)])
 
-  veloc[...] = numpy.random.normal(0.0, 1.0, (nCoords, 3))
+  veloc[:, :3] = numpy.random.normal(0.0, 1.0, (nCoords, 3))
   veloc *= sqrt(tRef / getTemp(masses, veloc, nCoords))
   for i, m in enumerate(masses):
     if m == INFINITY:
@@ -163,7 +163,7 @@ def runDynamics(ctx, cq, kernels, collider,
 
   zero_forces = cl.enqueue_fill_buffer(
     cq, forces_buf, numpy.zeros(1, dtype='float64'),
-    0, nCoords * 3 * dtype('float64').itemsize
+    0, nCoords * 4 * dtype('float64').itemsize
   )
   e = kernels['getRepulsiveForce'](
     cq, (nRep,), None,
@@ -223,11 +223,11 @@ def runDynamics(ctx, cq, kernels, collider,
     )
     (veloc, _) = cl.enqueue_map_buffer(
       cq, veloc_buf, cl.map_flags.READ,
-      0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
+      0, (nCoords, 4), dtype('float64'), wait_for=[e], is_blocking=False
     )
     zero_forces = cl.enqueue_fill_buffer(
       cq, forces_buf, numpy.zeros(1, dtype='float64'),
-      0, nCoords * 3 * dtype('float64').itemsize, wait_for=[e]
+      0, nCoords * 4 * dtype('float64').itemsize, wait_for=[e]
     )
     e = kernels['getRepulsiveForce'](
       cq, (nRep,), None,
@@ -252,7 +252,7 @@ def runDynamics(ctx, cq, kernels, collider,
 
     (veloc, _) = cl.enqueue_map_buffer(
       cq, veloc_buf, cl.map_flags.READ,
-      0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
+      0, (nCoords, 4), dtype('float64'), wait_for=[e], is_blocking=False
     )
     cl.wait_for_events([cl.enqueue_barrier(cq)])
 
@@ -260,7 +260,7 @@ def runDynamics(ctx, cq, kernels, collider,
       temp = getTemp(masses, veloc, nCoords)
       (coords, _) = cl.enqueue_map_buffer(
         cq, coords_buf, cl.map_flags.READ,
-        0, (nCoords, 3), dtype('float64'), wait_for=[e], is_blocking=False
+        0, (nCoords, 4), dtype('float64'), wait_for=[e], is_blocking=False
       )
       cl.wait_for_events([cl.enqueue_barrier(cq)])
       nViol, rmsd = getStats(restIndices, restLimits, coords, nRest)

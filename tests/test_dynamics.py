@@ -43,12 +43,12 @@ def test_get_stats():
 def test_restraint_force(ctx, cq, kernels):
     # Forces are repulsive 0-1, zero 1-2, attractive 2-3, asymptotic 3+
     coords = np.array([
-        [0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.5],
-        [0.0, 0.0, 1.5],
-        [0.0, 0.0, 2.5],
-        [0.0, 0.0, 3.5],
-        [0.0, 0.0, 5.0],
+        [0.0, 0.0, 0.0, float('nan')],
+        [0.0, 0.0, 0.5, float('nan')],
+        [0.0, 0.0, 1.5, float('nan')],
+        [0.0, 0.0, 2.5, float('nan')],
+        [0.0, 0.0, 3.5, float('nan')],
+        [0.0, 0.0, 5.0, float('nan')],
     ], dtype='float64')
     indices = np.array([
         [0, 1], [0, 2], [0, 3], [0, 4], [0, 5],
@@ -89,4 +89,4 @@ def test_restraint_force(ctx, cq, kernels):
     expected[0] = -expected[1:].sum(axis=0)
 
     print(forces)
-    np.testing.assert_allclose(forces, expected)
+    np.testing.assert_allclose(forces[:, :3], expected)

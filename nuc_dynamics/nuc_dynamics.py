@@ -499,14 +499,14 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
     ambiguity = calc_ambiguity_offsets(restraints['ambiguity'])
 
     n_particles = sum(map(len, seq_pos_dict.values()))
-    coord_size = dtype(('double', 3)).itemsize
+    coord_size = dtype(('double', 4)).itemsize
     model_buf_size = roundUp(
       n_particles * coord_size, lcm(coord_size, cq.device.mem_base_addr_align)
     )
-    coords_buf_shape = (num_models, model_buf_size // coord_size, 3)
+    coords_buf_shape = (num_models, model_buf_size // coord_size, 4)
 
     coords_buf = cl.Buffer(
-      ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_ONLY,
+      ctx, cl.mem_flags.READ_ONLY,
       num_models * model_buf_size
     )
     model_coords_bufs = [
@@ -549,7 +549,7 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
     )
     cl.wait_for_events([cl.enqueue_barrier(cq)])
 
-    concatenate_into([coords[chr] for chr in points], coords_map, axis=1)
+    concatenate_into([coords[chr] for chr in points], coords_map[..., :3], axis=1)
     concatenate_into([masses[chr] for chr in points], masses_map)
     concatenate_into([radii[chr] for chr in points], radii_map)
 
@@ -586,7 +586,9 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
     )
 
     # Convert from single coord array to dict keyed by chromosome
-    coords_dict = unpack_chromo_coords(coords_map, points, seq_pos_dict)
+    coords_dict = unpack_chromo_coords(
+        coords_map[:, :n_particles, :3], points, seq_pos_dict
+    )
 
     return coords_dict, seq_pos_dict, restraint_dict
 

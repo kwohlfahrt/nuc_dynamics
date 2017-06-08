@@ -1,35 +1,35 @@
-kernel void updateVelocity(global double * const veloc,
+kernel void updateVelocity(global double3 * const veloc,
                            global const double * const masses,
-                           global const double * const forces,
-                           global const double * const accel,
+                           global const double3 * const forces,
+                           global const double3 * const accel,
                            const double tStep, const double r) {
     const size_t i = get_global_id(0);
 
-    const double3 old = vload3(i, veloc);
+    const double3 old = veloc[i];
     const double3 new =
-        old + 0.5 * tStep * (vload3(i, forces) / masses[i] + r * old - vload3(i, accel));
-    vstore3(new, i, veloc);
+        old + 0.5 * tStep * (forces[i] / masses[i] + r * old - accel[i]);
+    veloc[i] = new;
 }
 
-kernel void updateMotion(global double * const coords,
-                         global double * const veloc,
-                         global double * const accel,
+kernel void updateMotion(global double3 * const coords,
+                         global double3 * const veloc,
+                         global double3 * const accel,
                          global const double * const masses,
-                         global const double * const forces,
+                         global const double3 * const forces,
                          const double tStep, const double r) {
     const size_t i = get_global_id(0);
 
-    const double3 old_veloc = vload3(i, veloc);
-    const double3 old_coords = vload3(i, coords);
+    const double3 old_veloc = veloc[i];
+    const double3 old_coords = coords[i];
     const double3 new_accel =
-        vload3(i, forces) / masses[i] + r * old_veloc;
+        forces[i] / masses[i] + r * old_veloc;
     const double3 new_coords =
         old_coords + tStep * old_veloc + 0.5 * tStep * tStep * new_accel;
     const double3 new_veloc = old_veloc + tStep * new_accel;
 
-    vstore3(new_accel, i, accel);
-    vstore3(new_coords, i, coords);
-    vstore3(new_veloc, i, veloc);
+    accel[i] = new_accel;
+    coords[i] = new_coords;
+    veloc[i] = new_veloc;
 }
 
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics: enable
@@ -52,7 +52,7 @@ double atom_fadd(volatile global double *p, double val) {
 
 kernel void getRepulsiveForce(global const int * const repList,
                               global double * const forces,
-                              global const double * const coords,
+                              global const double3 * const coords,
                               global const double * const radii,
                               global const double * const masses,
                               const double fConst) {
@@ -65,7 +65,7 @@ kernel void getRepulsiveForce(global const int * const repList,
     const double repDist = radii[j] + radii[k];
     const double repDist2 = repDist * repDist;
 
-    const double3 dist = vload3(k, coords) - vload3(j, coords);
+    const double3 dist = coords[k] - coords[j];
     if (any(fabs(dist) > repDist))
         return;
     const double dist2 = dot(dist, dist);
@@ -76,10 +76,9 @@ kernel void getRepulsiveForce(global const int * const repList,
     vstore3(dist, 0, dists);
 
     const double rjk = 4 * fConst * (repDist2 - dist2);
-    const size_t D = 3;
-    for (size_t d = 0; d < D; d++){
-        atom_fadd(&forces[j*D+d],-dists[d] * rjk);
-        atom_fadd(&forces[k*D+d], dists[d] * rjk);
+    for (size_t d = 0; d < 3; d++){
+        atom_fadd(&forces[j*4+d],-dists[d] * rjk);
+        atom_fadd(&forces[k*4+d], dists[d] * rjk);
     }
 }
 
@@ -87,10 +86,9 @@ kernel void getRestraintForce(global const int * const restIndices,
                               global const double * const restLimits,
                               global const double * const restWeights,
                               global const int * const restAmbig,
-                              global const double * const coords,
+                              global const double3 * const coords,
                               global double * const forces,
                               const double fConst, const double switchRatio) {
-    const size_t D = 3;
     const size_t i = restAmbig[get_global_id(0)];
     const size_t nAmbig = restAmbig[get_global_id(0) + 1] - i;
 
@@ -100,7 +98,7 @@ kernel void getRestraintForce(global const int * const restIndices,
         const size_t k = restIndices[(i+n)*2+1];
         if (j == k)
             continue;
-        const double3 dist = vload3(j, coords) - vload3(k, coords);
+        const double3 dist = coords[j] - coords[k];
         const double r2 = dot(dist, dist);
         r_4 += 1.0 / (r2 * r2); // actually 1 / r4
     }
@@ -130,15 +128,15 @@ kernel void getRestraintForce(global const int * const restIndices,
         if (j == k)
             continue;
 
-        const double3 dist = vload3(j, coords) - vload3(k, coords);
+        const double3 dist = coords[j] - coords[k];
         double dists[3];
         vstore3(dist, 0, dists);
         const double s2 = max(dot(dist, dist), 1e-8);
         const double t = rjk * pown(r, 5) / (s2 * s2 * s2) * restWeights[i+n];
-        for (size_t d = 0; d < D; d++){
+        for (size_t d = 0; d < 3; d++){
             const double dist = t * dists[d];
-            atom_fadd(&forces[j*D+d], dist);
-            atom_fadd(&forces[k*D+d],-dist);
+            atom_fadd(&forces[j*4+d], dist);
+            atom_fadd(&forces[k*4+d],-dist);
         }
     }
 }
