@@ -161,3 +161,17 @@ def test_calc_limits():
 
     expected = {'a': (5, 86), 'b': (4, 29)}
     np.testing.assert_equal(calc_limits(contacts), expected)
+
+
+def test_remove_isolated_contacts():
+    from nuc_dynamics import remove_isolated_contacts
+
+    contact_dict = {'1': {'2': np.array([
+        [500, 800, 0], [505, 795, 0], [809, 509, 0],
+        [900, 200, 0], [500, 900, 0], [901, 201, 0],
+    ]).T}}
+
+    expected = {'1': {'2': np.array([
+        [500, 800, 0], [505, 795, 0], [809, 509, 0],
+    ]).T}}
+    np.testing.assert_equal(remove_isolated_contacts(contact_dict, 10, 2), expected)

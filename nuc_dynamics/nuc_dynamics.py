@@ -80,7 +80,7 @@ def export_nuc_coords(file_path, coords_dict, seq_pos_dict, restraint_dict, calc
       group.create_dataset(chr_b, data=data)
 
 
-def remove_isolated_contacts(contact_dict, threshold=int(2e6)):
+def remove_isolated_contacts(contact_dict, threshold=int(2e6), pos_error=100):
   """
   Select only contacts which are within a given sequence separation of another
   contact, for the same chromosome pair
@@ -94,7 +94,7 @@ def remove_isolated_contacts(contact_dict, threshold=int(2e6)):
       positions = array(contacts[:2], int32).T
 
       if len(positions): # Sometimes empty e.g. for MT, Y chromos
-        active_idx = getSupportedPairs(positions, int32(threshold))
+        active_idx = getSupportedPairs(positions, int32(threshold), pos_error)
         new_contacts[chromoA][chromoB] = contacts[:,active_idx]
 
   return dict(new_contacts)
