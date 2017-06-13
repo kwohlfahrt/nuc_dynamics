@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from .nuc_cython import (runDynamics, getSupportedPairs, Restraint)
+from .nuc_cython import (runDynamics, Restraint)
 
 def load_ncc_file(file_path):
   """Load chromosome and contact data from NCC format file, as output from NucProcess"""
@@ -80,23 +80,33 @@ def export_nuc_coords(file_path, coords_dict, seq_pos_dict, restraint_dict, calc
       group.create_dataset(chr_b, data=data)
 
 
+def between(x, a, b):
+  return (a < x) & (x < b)
+
+
 def remove_isolated_contacts(contact_dict, threshold=int(2e6), pos_error=100):
   """
   Select only contacts which are within a given sequence separation of another
   contact, for the same chromosome pair
   """
-  from numpy import array, int32
+  from numpy import array, zeros
   from collections import defaultdict
   new_contacts = defaultdict(dict)
 
-  for chromoA in contact_dict:
-    for chromoB, contacts in contact_dict[chromoA].items():
-      positions = array(contacts[:2], int32).T
+  for (chromoA, chromoB), contacts in flatten_dict(contact_dict).items():
+    positions = array(contacts[:2], 'int32').T
+    if len(positions) == 0: # Sometimes empty e.g. for MT, Y chromos
+      continue
+    pos_a = positions[:, 0][None, ...]
+    pos_b = positions[:, 1][None, ...]
 
-      if len(positions): # Sometimes empty e.g. for MT, Y chromos
-        active_idx = getSupportedPairs(positions, int32(threshold), pos_error)
-        new_contacts[chromoA][chromoB] = contacts[:,active_idx]
+    supported = zeros(len(positions), dtype='bool')
+    supported |= (between(abs(pos_a - pos_a.T), pos_error, threshold).any(axis=0) &
+                  between(abs(pos_b - pos_b.T), pos_error, threshold).any(axis=0))
+    supported |= (between(abs(pos_a - pos_b.T), pos_error, threshold).any(axis=0) &
+                  between(abs(pos_b - pos_a.T), pos_error, threshold).any(axis=0))
 
+    new_contacts[chromoA][chromoB] = contacts[:,supported]
   return dict(new_contacts)
 
 

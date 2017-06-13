@@ -163,6 +163,14 @@ def test_calc_limits():
     np.testing.assert_equal(calc_limits(contacts), expected)
 
 
+def test_between():
+    from nuc_dynamics import between
+
+    values = np.array([6, 4, 1, 8, 5])
+    expected = np.array([True, True, False, False, True])
+    np.testing.assert_equal(between(values, 2, 7), expected)
+
+
 def test_remove_isolated_contacts():
     from nuc_dynamics import remove_isolated_contacts
 

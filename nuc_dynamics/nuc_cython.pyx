@@ -316,37 +316,6 @@ cdef double getRestraintForce(ndarray[double, ndim=2] forces,
   return force
 
 
-def getSupportedPairs(ndarray[int, ndim=2] positions,
-                     int threshold=2000000, int posErr=100):
-
-  cdef int i, j, n = len(positions)
-  cdef int pA, pB, pC, pD
-  cdef ndarray[int, ndim=1] supported = numpy.zeros(n, numpy.int32)
-
-  for i in range(n):
-    pA = positions[i,0]
-    pB = positions[i,1]
-
-    for j in range(n):
-      if j == i:
-        continue
-
-      pC = positions[j,0]
-      pD = positions[j,1]
-
-      if (posErr < abs(pC-pA) < threshold) and (posErr < abs(pD-pB) < threshold):
-        supported[i] = 1
-        break
-
-      elif (posErr < abs(pD-pA) < threshold) and (posErr < abs(pC-pB) < threshold):
-        supported[i] = 1
-        break
-
-  indices = supported.nonzero()[0]
-
-  return indices
-
-
 def runDynamics(ndarray[double, ndim=2] coords,
                 ndarray[double, ndim=1] masses,
                 ndarray[double, ndim=1] radii,
