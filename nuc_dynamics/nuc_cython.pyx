@@ -60,9 +60,9 @@ cdef int getRepulsionList(ndarray[int,   ndim=2] repList,
   return n
 
 
-cdef double getTemp(ndarray[double, ndim=1] masses,
-                    ndarray[double, ndim=2] veloc,
-                    int nCoords):
+cpdef double getTemp(ndarray[double, ndim=1] masses,
+                     ndarray[double, ndim=2] veloc,
+                     int nCoords):
   cdef int i
   cdef double kin = 0.0
 
