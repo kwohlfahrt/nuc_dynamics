@@ -416,7 +416,8 @@ def lcm(a, b):
 def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
                   prev_seq_pos_dict=None, start_coords=None,
                   contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
-                  image_weight=1.0, temp_range=(5000.0, 10.0), temp_steps=500,
+                  image_weight=1.0, image_scaling=1.0,
+                  temp_range=(5000.0, 10.0), temp_steps=500,
                   dynamics_steps=100, time_step=0.001,
                   random_seed=None, random_radius=10.0, num_models=1,
                   ambig_exponent=4, printInterval=100):
@@ -428,10 +429,12 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
     """
 
     from numpy import (int32, ones, empty, random, concatenate, stack, argsort, arange,
-                       geomspace, linspace, arctan, full, zeros, dtype, ascontiguousarray)
+                       geomspace, linspace, arctan, full, zeros, dtype, ascontiguousarray,
+                       flatnonzero, in1d, where)
     from math import log, exp, atan, pi
     from functools import partial
     from collision.collision import Collider
+    from collision.index import Indexer
 
     bead_size = particle_size ** (1/3)
 
@@ -556,6 +559,12 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
     concatenate_into([coords[chr] for chr in points], coords_map[..., :3], axis=1)
     concatenate_into([masses[chr] for chr in points], masses_map)
     concatenate_into([radii[chr] for chr in points], radii_map)
+    image_indices_buf = cl.Buffer(
+      ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_ONLY |
+      cl.mem_flags.COPY_HOST_PTR,
+      hostbuf=flatnonzero(masses_map == float('inf')).astype('uint32')
+    )
+    nimage_indices = (masses_map == float('inf')).sum()
 
     del coords_map, masses_map, radii_map
 
@@ -569,16 +578,17 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
     time_taken = 0.0
 
     collider = Collider(ctx, n_particles, 16, 64, coord_dtype=fp_type)
+    indexer = Indexer(ctx, value_dtype=dtype((fp_dtype, 3)), index_dtype='uint32')
 
     for model_coords_buf in model_coords_bufs: # For each repeat calculation
       for temp, repulse in zip(temps, repulses):
         # Update coordinates for this temp
         dt = runDynamics(
-          ctx, cq, kernels, collider,
+          ctx, cq, kernels, collider, indexer,
           model_coords_buf, masses_buf, radii_buf, n_particles,
           rest_indices_buf, rest_limits_buf, rest_weights_buf, len(restraints),
-          ambiguity_buf, len(ambiguity),
-          temp, time_step, dynamics_steps, repulse, dist,
+          ambiguity_buf, len(ambiguity), image_indices_buf, nimage_indices,
+          temp, time_step, dynamics_steps, repulse, dist, image_scaling,
           ambigExp=ambig_exponent, printInterval=printInterval
         )
 
@@ -700,11 +710,13 @@ def main(args=None):
     parser.add_argument("--image-weight", type=float, default=1.0,
                         help="The weighting to use for image-based restraints")
     parser.add_argument("--image-scale", type=float, default=1.0,
-                        help="The scaling of the image coordinates")
+                        help="The initial scaling of the image coordinates")
     parser.add_argument("--print-interval", type=int, default=0,
                         help="The number of dynamics steps between stat logs")
     parser.add_argument("--ambiguous-exponent", type=int, default=4,
                         help="The exponent to use for ambiguous distances")
+    parser.add_argument("--scaling-rate", type=float, default=1.0,
+                        help="The rate at which the image scale is adjusted are scaled")
 
     args = parser.parse_args(argv[1:] if args is None else args)
 
@@ -724,7 +736,7 @@ def main(args=None):
         ctx, cq, kernels, image_coords, contacts, set(image_coords.keys()),
         args.particle_sizes,
         contact_dist=args.contact_dist, backbone_dist=args.backbone_dist,
-        image_weight=args.image_weight,
+        image_weight=args.image_weight, image_scaling=args.scaling_rate,
         # Cautious annealing parameters
         # Don' need to be fixed, but are for simplicity
         temp_range=args.temp_range, temp_steps=args.temp_steps,

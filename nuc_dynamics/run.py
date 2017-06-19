@@ -8,6 +8,14 @@ fp_type = dtype('float64')
 
 BOLTZMANN_K = 0.0019872041
 
+def std(x):
+    return numpy.sqrt(((x - x.mean(axis=0)) ** 2).sum(axis=1).mean())
+
+
+def divergence(coords, forces):
+    return ((coords - coords.mean(axis=0))[:, :3] *
+            (forces - forces.mean(axis=0))[:, :3]).sum(axis=1).mean()
+
 def getTemp(masses, veloc):
     indices = masses != float('inf')
     kin = (masses[indices] * (veloc[indices]**2).sum(axis=1)).sum()
@@ -30,12 +38,13 @@ def getStats(indices, limits, weights, coords):
     return nviol, rmsd
 
 
-def runDynamics(ctx, cq, kernels, collider,
+def runDynamics(ctx, cq, kernels, collider, indexer,
                 coords_buf, masses_buf, radii_buf, nCoords,
                 restIndices_buf, restLimits_buf, restWeights_buf, nRest,
-                restAmbig_buf, nAmbig,
+                restAmbig_buf, nAmbig, image_idxs_buf, n_image_idxs,
                 tRef=1000.0, tStep=0.001, nSteps=1000, fConstR=1.0, fConstD=25.0,
-                ambigExp=4, beta=10.0, tTaken=0.0, printInterval=10000, tot0=20.458):
+                sConst=0.01, ambigExp=4, beta=10.0, tTaken=0.0,
+                printInterval=10000, tot0=20.458):
 
   if nCoords < 2:
     raise NucCythonError('Too few coodinates')
@@ -78,6 +87,16 @@ def runDynamics(ctx, cq, kernels, collider,
   )
   nRep_buf = cl.Buffer(
     ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_WRITE, dtype('int32').itemsize
+  )
+
+  image_forces_buf = cl.Buffer(
+      ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.HOST_READ_ONLY |
+      cl.mem_flags.READ_WRITE,
+      n_image_idxs * 4 * dtype('double').itemsize
+  )
+  image_coords_buf = cl.Buffer(
+      ctx, cl.mem_flags.ALLOC_HOST_PTR | cl.mem_flags.READ_WRITE,
+      n_image_idxs * 4 * dtype('double').itemsize
   )
 
   cl.enqueue_fill_buffer(
@@ -176,30 +195,57 @@ def runDynamics(ctx, cq, kernels, collider,
       cq, (roundUp(nCoords, 64),), None,
       coords_buf, veloc_buf, accel_buf, masses_buf, forces_buf, tStep0, r, nCoords,
     )
+    e_coord_gather = indexer.gather(
+        cq, n_image_idxs, coords_buf, image_idxs_buf, image_coords_buf,
+        wait_for=[e]
+    )
     (veloc, _) = cl.enqueue_map_buffer(
       cq, veloc_buf, cl.map_flags.READ,
       0, (nCoords, 4), fp_type, wait_for=[e], is_blocking=False
+    )
+    (image_coords, _) = cl.enqueue_map_buffer(
+        cq, image_coords_buf, cl.map_flags.READ | cl.map_flags.WRITE,
+        0, (n_image_idxs, 4), dtype('float64'),
+        wait_for=[e_coord_gather], is_blocking=False
     )
     zero_forces = cl.enqueue_fill_buffer(
       cq, forces_buf, numpy.zeros(1, dtype=fp_type),
       0, nCoords * 4 * fp_type.itemsize, wait_for=[e]
     )
-    e = kernels['getRepulsiveForce'](
-      cq, (roundUp(nRep[0], 64),), None,
-      repList_buf, forces_buf, coords_buf, radii_buf, masses_buf, fConstR, nRep[0],
-      wait_for=[zero_forces]
-    )
-    e = kernels['getRestraintForce'](
+    e_rest_force = kernels['getRestraintForce'](
       cq, (roundUp(nAmbig-1, 64),), None,
       restIndices_buf, restLimits_buf, restWeights_buf, restAmbig_buf,
       coords_buf, forces_buf, fConstD, 0.5, ambigExp, nAmbig-1,
       wait_for=[zero_forces]
     )
+    e_force_gather = indexer.gather(
+        cq, n_image_idxs, forces_buf, image_idxs_buf, image_forces_buf,
+        wait_for=[e_rest_force]
+    )
+    e_rep_force = kernels['getRepulsiveForce'](
+      cq, (roundUp(nRep[0], 64),), None,
+      repList_buf, forces_buf, coords_buf, radii_buf, masses_buf, fConstR, nRep[0],
+      wait_for=[zero_forces, e_force_gather]
+    )
+    (image_forces, _) = cl.enqueue_map_buffer(
+        cq, image_forces_buf, cl.map_flags.READ,
+        0, (n_image_idxs, 4), dtype('float64'),
+        wait_for=[e_force_gather], is_blocking=False
+    )
     cl.wait_for_events([cl.enqueue_barrier(cq)])
 
-    r = beta * (tRef / max(getTemp(masses, veloc[:, :3]), 0.001) - 1.0)
-    del veloc
+    scaling = 1.0 + sConst * (
+        divergence(image_coords, image_forces) / (fConstD * std(image_coords[:, :3]) ** 2)
+    )
 
+    image_coords *= scaling
+
+    r = beta * (tRef / max(getTemp(masses, veloc[:, :3]), 0.001) - 1.0)
+    del veloc, image_forces, image_coords
+
+    e = indexer.scatter(
+        cq, n_image_idxs, image_coords_buf, image_idxs_buf, coords_buf,
+    )
     e = kernels['updateVelocity'](
       cq, (roundUp(nCoords, 64),), None,
       veloc_buf, masses_buf, forces_buf, accel_buf, tStep0, r, nCoords,
@@ -217,12 +263,19 @@ def runDynamics(ctx, cq, kernels, collider,
         cq, coords_buf, cl.map_flags.READ,
         0, (nCoords, 4), fp_type, wait_for=[e], is_blocking=False
       )
+      (image_coords, _) = cl.enqueue_map_buffer(
+          cq, image_coords_buf, cl.map_flags.WRITE,
+          0, (n_image_idxs, 4), dtype('float64'),
+          wait_for=[e_coord_gather], is_blocking=False
+      )
       cl.wait_for_events([cl.enqueue_barrier(cq)])
+      image_scale = std(image_coords[:, :3])
+      scale = std(coords[:, :3])
       nViol, rmsd = getStats(restIndices, restLimits, restWeights, coords[:, :3])
-      del coords
 
-      data = (temp, rmsd, nViol, nRep[0])
-      print('temp:%7.2lf  rmsd:%7.2lf  nViol:%5d  nRep:%5d' % data)
+      del coords, image_coords
+      data = (temp, rmsd, nViol, nRep[0], scale, image_scale)
+      print('temp:%7.2lf  rmsd:%7.2lf  nViol:%5d  nRep:%5d scale: %7.2f image-scale: %7.2f' % data)
 
     tTaken += tStep
 
