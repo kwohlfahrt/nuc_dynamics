@@ -1,90 +1,39 @@
-from libc.math cimport exp, abs, sqrt, ceil, pow
-from numpy cimport ndarray, double_t, int_t, dtype
-from numpy.math cimport INFINITY
-import numpy, time, pyopencl as cl
+import numpy
+from numpy import dtype
+import pyopencl as cl
+import time
 
 BOLTZMANN_K = 0.0019872041
 
-#ctypedef int_t   int
-#ctypedef double_t double
+def getTemp(masses, veloc):
+    indices = masses != float('inf')
+    kin = (masses[indices] * (veloc[indices]**2).sum(axis=1)).sum()
 
-class NucCythonError(Exception):
-
-  def __init__(self, err):
-
-    Exception.__init__(self, err)
+    return kin / (3 * len(masses) * BOLTZMANN_K)
 
 
-cpdef double getTemp(ndarray[double, ndim=1] masses,
-                     ndarray[double, ndim=2] veloc,
-                     int nCoords):
-  cdef int i
-  cdef double kin = 0.0
+def getStats(indices, limits, coords):
+    j, k = indices.T
+    identical = j == k
+    j = j[~identical]
+    k = k[~identical]
 
-  for i in range(nCoords):
-    if masses[i] == INFINITY:
-      continue
-    kin += masses[i] * (veloc[i,0]*veloc[i,0] + veloc[i,1]*veloc[i,1] + veloc[i,2]*veloc[i,2])
+    dmin, dmax = limits[~identical].T
 
-  return kin / (3 * nCoords * BOLTZMANN_K)
-
-
-def getStats(ndarray[int,   ndim=2] restIndices,
-             ndarray[double, ndim=2] restLimits,
-             ndarray[double, ndim=2] coords,
-             int nRest):
-
-  cdef int i, nViol = 0
-  cdef int j, k
-  cdef double viol, dmin, dmax, dx, dy, dz, r, s = 0
-
-  for i in range(nRest):
-    j = restIndices[i,0]
-    k = restIndices[i,1]
-
-    if j == k:
-      continue
-
-    dmin = restLimits[i,0]
-    dmax = restLimits[i,1]
-
-    dx = coords[j,0] - coords[k,0]
-    dy = coords[j,1] - coords[k,1]
-    dz = coords[j,2] - coords[k,2]
-    r = sqrt(dx*dx + dy*dy + dz*dz)
-
-    if r < dmin:
-      viol = dmin - r
-      nViol += 1
-
-    elif r > dmax:
-      viol = r - dmax
-      nViol += 1
-
-    else:
-      viol = 0
-
-    s += viol * viol
-
-  return nViol, sqrt(s/nRest)
+    r = numpy.linalg.norm(coords[j] - coords[k], axis=1)
+    viol = (dmin - r).clip(min=0) + (r - dmax).clip(min=0)
+    return numpy.count_nonzero(viol), numpy.sqrt((viol * viol).sum() / len(indices))
 
 
 def runDynamics(ctx, cq, kernels, collider,
-                coords_buf, masses_buf, radii_buf, int nCoords,
-                restIndices_buf, restLimits_buf, restWeights_buf, int nRest,
-                restAmbig_buf, int nAmbig,
-                double tRef=1000.0, double tStep=0.001, int nSteps=1000,
-                double fConstR=1.0, double fConstD=25.0, double beta=10.0,
-                double tTaken=0.0, int printInterval=10000,
-                double tot0=20.458):
+                coords_buf, masses_buf, radii_buf, nCoords,
+                restIndices_buf, restLimits_buf, restWeights_buf, nRest,
+                restAmbig_buf, nAmbig,
+                tRef=1000.0, tStep=0.001, nSteps=1000, fConstR=1.0, fConstD=25.0,
+                beta=10.0, tTaken=0.0, printInterval=10000, tot0=20.458):
 
   if nCoords < 2:
     raise NucCythonError('Too few coodinates')
-
-  cdef int i, j, n, step, nViol
-
-  cdef double d2, dx, dy, dz, ek, rmsd, tStep0, temp, fDist, fRep
-  cdef double Langevin_gamma
 
   tStep0 = tStep * tot0
   beta /= tot0
@@ -133,13 +82,10 @@ def runDynamics(ctx, cq, kernels, collider,
   cl.wait_for_events([cl.enqueue_barrier(cq)])
 
   veloc[:, :3] = numpy.random.normal(0.0, 1.0, (nCoords, 3))
-  veloc *= sqrt(tRef / getTemp(masses, veloc, nCoords))
-  for i, m in enumerate(masses):
-    if m == INFINITY:
-      veloc[i] = 0
+  veloc *= numpy.sqrt(tRef / getTemp(masses, veloc[:, :3]))
+  veloc[masses == float('inf')] = 0
 
-  cdef double t0 = time.time()
-  cdef double r # for use as kernel parameter
+  t0 = time.time()
 
   e = collider.get_collisions(cq, coords_buf, radii_buf, nRep_buf, None, 0)
   (nRep, _) = cl.enqueue_map_buffer(
@@ -214,7 +160,7 @@ def runDynamics(ctx, cq, kernels, collider,
       )
       del old_repList_buf
 
-    r = beta * (tRef / max(getTemp(masses, veloc, nCoords), 0.001) - 1.0)
+    r = beta * (tRef / max(getTemp(masses, veloc[:, :3]), 0.001) - 1.0)
     del veloc
 
     e = kernels['updateMotion'](
@@ -242,7 +188,7 @@ def runDynamics(ctx, cq, kernels, collider,
     )
     cl.wait_for_events([cl.enqueue_barrier(cq)])
 
-    r = beta * (tRef / max(getTemp(masses, veloc, nCoords), 0.001) - 1.0)
+    r = beta * (tRef / max(getTemp(masses, veloc[:, :3]), 0.001) - 1.0)
     del veloc
 
     e = kernels['updateVelocity'](
@@ -257,13 +203,13 @@ def runDynamics(ctx, cq, kernels, collider,
     cl.wait_for_events([cl.enqueue_barrier(cq)])
 
     if (printInterval > 0) and step % printInterval == 0:
-      temp = getTemp(masses, veloc, nCoords)
+      temp = getTemp(masses, veloc[:, :3])
       (coords, _) = cl.enqueue_map_buffer(
         cq, coords_buf, cl.map_flags.READ,
         0, (nCoords, 4), dtype('float64'), wait_for=[e], is_blocking=False
       )
       cl.wait_for_events([cl.enqueue_barrier(cq)])
-      nViol, rmsd = getStats(restIndices, restLimits, coords, nRest)
+      nViol, rmsd = getStats(restIndices, restLimits, coords[:, :3])
       del coords
 
       data = (temp, rmsd, nViol, nRep[0])

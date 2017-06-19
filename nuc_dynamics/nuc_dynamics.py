@@ -2,7 +2,7 @@ from pathlib import Path
 from numpy import dtype
 import pyopencl as cl
 
-from .nuc_cython import runDynamics
+from .run import runDynamics
 
 Restraint = dtype([('indices', 'int32', 2), ('dists', 'float64', 2),
                    ('ambiguity', 'int32'), ('weight', 'float64')])

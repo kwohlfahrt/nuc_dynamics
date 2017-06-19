@@ -16,19 +16,19 @@ def kernels(ctx):
     return compile_kernels(ctx)
 
 def test_get_temp():
-    from nuc_dynamics.nuc_cython import getTemp
+    from nuc_dynamics.run import getTemp
 
     np.random.seed(4)
     masses = np.random.uniform(0.1, 1.0, size=20)
     masses[2:4] = float('inf')
     veloc = np.random.uniform(-1.0, 1.0, size=(20, 3))
-    values = getTemp(masses, veloc, len(masses))
+    values = getTemp(masses, veloc)
     expected = 65.77467716280236 # Using Tim's as reference
     assert values == expected
 
 
 def test_get_stats():
-    from nuc_dynamics.nuc_cython import getStats
+    from nuc_dynamics.run import getStats
 
     np.random.seed(4)
     coords = np.random.uniform(-1.0, 1.0, size=(20, 3))
@@ -36,7 +36,7 @@ def test_get_stats():
     limits = np.stack([np.random.uniform(0.1, 0.5, size=len(indices)),
                        np.random.uniform(0.6, 1.2, size=len(indices))], axis=-1)
 
-    values = getStats(indices, limits, coords, len(indices))
+    values = getStats(indices, limits, coords)
     assert values == (31, 0.721443286736486)
 
 
