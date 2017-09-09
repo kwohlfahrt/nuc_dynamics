@@ -267,55 +267,61 @@ def flatten_dict(d):
 
 def concatenate_restraints(restraint_dict, pos_dict):
   from itertools import accumulate, chain
-  from numpy import concatenate, array
+  from functools import partial
+  from numpy import concatenate, array, empty
   import operator as op
 
-  chromosome_lengths = map(len, map(pos_dict.__getitem__, sorted(pos_dict)))
-  chromosome_offsets = dict(zip(sorted(pos_dict),
-                                chain([0], accumulate(chromosome_lengths, op.add))))
+  chromosomes = sorted(pos_dict)
+  chromosome_offsets = dict(zip(chromosomes, accumulate(chain(
+    [0], map(len, map(partial(op.getitem, pos_dict), chromosomes)))
+  )))
   flat_restraints = sorted(flatten_dict(restraint_dict).items())
 
-  particle_indices = concatenate([
-    restraints['indices'] + array([[chromosome_offsets[c] for c in chrs]], dtype='int32')
+  r = concatenate(list(map(op.itemgetter(1), flat_restraints)))
+  r['indices'] = concatenate([
+    restraints['indices'] + array([[chromosome_offsets[c] for c in chrs]])
     for chrs, restraints in flat_restraints
   ])
-  distances, ambiguity_groups, weights = map(concatenate, (
-    [restraints[k] for _, restraints in flat_restraints]
-    for k in ['dists', 'ambiguity', 'weight']
-  ))
 
-  return particle_indices, distances, weights, ambiguity_groups
+  return r
 
 
 def calc_restraints(contact_dict, pos_dict,
                     scale=1.0, lower=0.8, upper=1.2, weight=1.0):
-  from numpy import array, searchsorted
+  from numpy import empty, array, searchsorted
   from collections import defaultdict, Counter
 
   dists = array([[lower, upper]]) * scale
 
-  group_idxs = defaultdict(list)
-  # Group indices by ambiguity group
+  r = defaultdict(dict)
   for (chr_a, chr_b), (pos_a, pos_b, ambig) in flatten_dict(contact_dict).items():
+    r[chr_a][chr_b] = empty(len(ambig), dtype=Restraint)
+
     idxs_a = searchsorted(pos_dict[chr_a], pos_a)
     idxs_b = searchsorted(pos_dict[chr_b], pos_b)
-    for ambig, idx_a, idx_b in zip(ambig, idxs_a, idxs_b):
-      group_idxs[ambig].append(tuple(sorted([(chr_a, idx_a), (chr_b, idx_b)])))
-
-  # Merge identical ambiguity groups
-  group_counts = Counter(map(tuple, map(sorted, group_idxs.values())))
-
-  # Unpack into restraints by chromosome
-  restraints = defaultdict(list)
-  for ambig, (ends, n) in enumerate(sorted(group_counts.items()), start=1):
-    for (chr_a, idx_a), (chr_b, idx_b) in map(tuple, ends):
-      restraints[chr_a, chr_b].append(((idx_a, idx_b), dists, ambig, n * weight))
-
-  r = defaultdict(dict)
-  for (chr_a, chr_b), rests in restraints.items():
-    r[chr_a][chr_b] = array(rests, dtype=Restraint)
+    r[chr_a][chr_b]['indices'] = array([idxs_a, idxs_b]).T
+    r[chr_a][chr_b]['ambiguity'] = ambig
+    r[chr_a][chr_b]['dists'] = dists
+    r[chr_a][chr_b]['weight'] = weight
   return dict(r)
 
+
+def bin_restraints(restraints):
+  from numpy import unique, bincount, empty, concatenate, sort, copy
+  # Ambiguity group 0 is unique restraints, so they can all be binned
+
+  restraints = copy(restraints)
+  restraints['indices'] = sort(restraints['indices'], axis=1)
+  uniques, idxs = unique(
+    restraints[['ambiguity', 'indices', 'dists']], return_inverse=True
+  )
+
+  binned = empty(len(uniques), dtype=Restraint)
+  binned['ambiguity'] = uniques['ambiguity']
+  binned['indices'] = uniques['indices']
+  binned['dists'] = uniques['dists']
+  binned['weight'] = bincount(idxs, weights=restraints['weight'])
+  return binned
 
 def merge_restraints(*restraints):
   from functools import partial
@@ -420,19 +426,15 @@ def anneal_genome(contact_dict, image_contacts, particle_size,
 
     # Concatenate chromosomal data into a single array of particle restraints
     # for structure calculation.
-    restraint_indices, restraint_dists, restraint_weights, ambiguity_groups = (
-      concatenate_restraints(restraint_dict, seq_pos_dict)
-    )
+    restraints = bin_restraints(concatenate_restraints(restraint_dict, seq_pos_dict))
     coords = concatenate([coords[chr] for chr in points], axis=1)
     masses = concatenate([masses[chr] for chr in points])
     radii = concatenate([radii[chr] for chr in points])
     repDists = concatenate([repDists[chr] for chr in points])
 
-    restraint_order = argsort(ambiguity_groups)
-    restraint_indices = restraint_indices[restraint_order]
-    restraint_dists = restraint_dists[restraint_order]
-    restraint_weights = restraint_weights[restraint_order]
-    ambiguity = calc_ambiguity_offsets(ambiguity_groups[restraint_order])
+    restraint_order = argsort(restraints['ambiguity'])
+    restraints = restraints[restraint_order]
+    ambiguity = calc_ambiguity_offsets(restraints['ambiguity'])
 
     # Setup annealig schedule: setup temps and repulsive terms
     temps = geomspace(temp_range[0], temp_range[1], temp_steps, endpoint=False)
@@ -450,7 +452,7 @@ def anneal_genome(contact_dict, image_contacts, particle_size,
         # Update coordinates for this temp
         dt = runDynamics(
           model_coords, masses, radii, repDists,
-          restraint_indices, restraint_dists, restraint_weights, ambiguity,
+          restraints['indices'], restraints['dists'], restraints['weight'], ambiguity,
           temp, time_step, dynamics_steps, repulse, dist
         )
 

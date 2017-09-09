@@ -73,14 +73,15 @@ def test_concatenate_restraints():
                                        ([ 3,  2], [0.6, 1.6], 1, 1.6),],
                                       dtype=Restraint)}
     }
-    expected = (np.array([[4, 5], [3, 2], [4, 15], [8, 25], [22, 26], [13, 12]]),
-                np.array([[0.3, 1.3], [0.4, 1.4], [0.1, 1.1],
-                          [0.2, 1.2], [0.5, 1.5], [0.6, 1.6]]),
-                np.array([1.3, 1.4, 1.1, 1.2, 1.5, 1.6]),
-                np.array([0, 1, 0, 0, 0, 1]),
-    )
-    for a, b in zip(expected, concatenate_restraints(restraints, seq_pos)):
-        np.testing.assert_array_equal(a, b)
+    expected = np.array([
+        (( 4,  5), (0.3, 1.3), 0, 1.3,),
+        (( 3,  2), (0.4, 1.4), 1, 1.4,),
+        (( 4, 15), (0.1, 1.1), 0, 1.1,),
+        (( 8, 25), (0.2, 1.2), 0, 1.2,),
+        ((22, 26), (0.5, 1.5), 0, 1.5,),
+        ((13, 12), (0.6, 1.6), 1, 1.6,),
+    ], dtype=Restraint)
+    np.testing.assert_array_equal(expected, concatenate_restraints(restraints, seq_pos))
 
 def test_calc_restraints():
     from nuc_dynamics.nuc_cython import Restraint
@@ -93,14 +94,16 @@ def test_calc_restraints():
                                      [  2, 109, 1],
                                      [ 19,  81, 2],
                                      [  3, 108, 2],], dtype='int').T,
-                      'b': np.array([[ 11, 120, 3],
+                      'b': np.array([[ 11, 120,-3],
                                      [ 40,  60, 4]], dtype='int').T},
                 'b': {'b': np.array([[ 50,  50, 5]], dtype='int').T}}
 
-    expected = {'a': {'a': np.array([([ 0, 10], [0.8, 1.2], 1, 2.0),
-                                     ([ 1,  8], [0.8, 1.2], 1, 2.0),
-                                     ([ 2,  7], [0.8, 1.2], 3, 1.0),], dtype=Restraint),
-                      'b': np.array([([ 1,  4], [0.8, 1.2], 2, 1.0),
+    expected = {'a': {'a': np.array([([ 2,  7], [0.8, 1.2], 0, 1.0),
+                                     ([ 1,  8], [0.8, 1.2], 1, 1.0),
+                                     ([ 0, 10], [0.8, 1.2], 1, 1.0),
+                                     ([ 1,  8], [0.8, 1.2], 2, 1.0),
+                                     ([ 0, 10], [0.8, 1.2], 2, 1.0),], dtype=Restraint),
+                      'b': np.array([([ 1,  4], [0.8, 1.2],-3, 1.0),
                                      ([ 3,  1], [0.8, 1.2], 4, 1.0)], dtype=Restraint)},
                 'b': {'b': np.array([([ 1,  1], [0.8, 1.2], 5, 1.0)], dtype=Restraint)}}
 
@@ -194,3 +197,31 @@ def test_merge_restraints():
 
     merged = {'foo': {'bar': [0, 9, 10], 'foo': [1, 5]}, 'baz': {'bar': [6]}}
     testing.assert_equal(merge_restraints(a, b), merged)
+
+
+def test_bin_restraints():
+    from nuc_dynamics import bin_restraints, Restraint
+
+    restraints = np.array([
+        ((4, 5), (0.8, 1.1), 1, 1.3,),
+        ((5, 4), (0.8, 1.1), 1, 1.0,),
+        ((3, 2), (0.8, 1.1), 2, 1.0,),
+        ((4, 5), (0.8, 1.1), 1, 0.1,),
+        ((3, 5), (0.8, 1.1), 2, 1.0,),
+        ((2, 6), (0.8, 1.1), 0, 1.0,),
+        ((3, 2), (0.8, 1.1), 1, 1.0,),
+        ((3, 2), (0.8, 1.2), 1, 1.0,),
+        ((3, 2), (0.8, 1.1), 0, 1.0,),
+        ((3, 2), (0.8, 1.1), 0, 1.0,),
+    ], dtype=Restraint)
+
+    expected = np.array([
+        ((2, 3), (0.8, 1.1), 0, 2.0,),
+        ((2, 6), (0.8, 1.1), 0, 1.0,),
+        ((2, 3), (0.8, 1.2), 1, 1.0,),
+        ((2, 3), (0.8, 1.1), 1, 1.0,),
+        ((4, 5), (0.8, 1.1), 1, 2.4,),
+        ((2, 3), (0.8, 1.1), 2, 1.0,),
+        ((3, 5), (0.8, 1.1), 2, 1.0,),
+    ], dtype=Restraint)
+    np.testing.assert_array_equal(bin_restraints(restraints), expected)
