@@ -308,10 +308,16 @@ def calc_restraints(contact_dict, pos_dict,
 
 def bin_restraints(restraints):
   from numpy import unique, bincount, empty, concatenate, sort, copy
-  # Ambiguity group 0 is unique restraints, so they can all be binned
-
   restraints = copy(restraints)
   restraints['indices'] = sort(restraints['indices'], axis=1)
+
+  # Ambiguity group 0 is unique restraints, so they can all be binned
+  _, inverse, counts = unique(
+    restraints['ambiguity'], return_inverse=True, return_counts=True
+  )
+  restraints['ambiguity'][counts[inverse] == 1] = 0
+
+  # Bin within ambiguity groups
   uniques, idxs = unique(
     restraints[['ambiguity', 'indices', 'dists']], return_inverse=True
   )
