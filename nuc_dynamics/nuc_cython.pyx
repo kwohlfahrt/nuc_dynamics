@@ -223,13 +223,13 @@ cdef double getRepulsiveForce(ndarray[int,   ndim=2] repList,
   return force
 
 
-cdef double getRestraintForce(ndarray[double, ndim=2] forces,
+cpdef double getRestraintForce(ndarray[double, ndim=2] forces,
                               ndarray[double, ndim=2] coords,
                               ndarray[int,   ndim=2] restIndices,
                               ndarray[double, ndim=2] restLimits,
                               ndarray[double, ndim=1] restWeight,
                               ndarray[int, ndim=1] restAmbig,
-                              int nRest, double fConst, double exponent=2.0,
+                              double fConst, double exponent=2.0,
                               double switchRatio=0.5, double asymptote=1.0):
 
   cdef int i, j, k, n, m, nAmbig
@@ -378,7 +378,7 @@ def runDynamics(ndarray[double, ndim=2] coords,
 
   fRep = getRepulsiveForce(repList, forces, coords, nRep,  fConstR, radii)
   fDist = getRestraintForce(forces, coords, restIndices, restLimits,
-                            restWeight, restAmbig, nRest, fConstD)
+                            restWeight, restAmbig, fConstD)
 
   for step in range(nSteps):
     for i in range(nCoords):
@@ -408,7 +408,7 @@ def runDynamics(ndarray[double, ndim=2] coords,
 
     fRep  = getRepulsiveForce(repList, forces, coords, nRep, fConstR, radii)
     fDist = getRestraintForce(forces, coords, restIndices, restLimits,
-                              restWeight, restAmbig, nRest, fConstD)
+                              restWeight, restAmbig, fConstD)
 
     updateVelocity(masses, forces, accel, veloc, nCoords, tRef, tStep0,  beta)
 
