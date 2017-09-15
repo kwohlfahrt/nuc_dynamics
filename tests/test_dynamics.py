@@ -35,8 +35,9 @@ def test_get_stats():
     indices = np.random.choice(len(coords), (40, 2)).astype('int32')
     limits = np.stack([np.random.uniform(0.1, 0.5, size=len(indices)),
                        np.random.uniform(0.6, 1.2, size=len(indices))], axis=-1)
+    weights = np.ones(len(indices), dtype='float64')
 
-    values = getStats(indices, limits, coords)
+    values = getStats(indices, limits, weights, coords)
     assert values == (31, 0.721443286736486)
 
 

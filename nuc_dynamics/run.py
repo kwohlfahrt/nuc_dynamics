@@ -13,7 +13,7 @@ def getTemp(masses, veloc):
     return kin / (3 * len(masses) * BOLTZMANN_K)
 
 
-def getStats(indices, limits, coords):
+def getStats(indices, limits, weights, coords):
     j, k = indices.T
     identical = j == k
     j = j[~identical]
@@ -23,7 +23,9 @@ def getStats(indices, limits, coords):
 
     r = numpy.linalg.norm(coords[j] - coords[k], axis=1)
     viol = (dmin - r).clip(min=0) + (r - dmax).clip(min=0)
-    return numpy.count_nonzero(viol), numpy.sqrt((viol * viol).sum() / len(indices))
+    nviol = numpy.count_nonzero(viol)
+    rmsd = numpy.sqrt((viol * viol).sum() / weights.sum())
+    return nviol, rmsd
 
 
 def runDynamics(ctx, cq, kernels, collider,
@@ -54,6 +56,10 @@ def runDynamics(ctx, cq, kernels, collider,
   (restIndices, _) = cl.enqueue_map_buffer(
     cq, restIndices_buf, cl.map_flags.READ,
     0, (nRest, 2), dtype('int32'), is_blocking=False
+  )
+  (restWeights, _) = cl.enqueue_map_buffer(
+    cq, restWeights_buf, cl.map_flags.READ,
+    0, (nRest,), dtype('float64'), is_blocking=False
   )
 
   accel_buf = cl.Buffer(
@@ -210,7 +216,7 @@ def runDynamics(ctx, cq, kernels, collider,
         0, (nCoords, 4), dtype('float64'), wait_for=[e], is_blocking=False
       )
       cl.wait_for_events([cl.enqueue_barrier(cq)])
-      nViol, rmsd = getStats(restIndices, restLimits, coords[:, :3])
+      nViol, rmsd = getStats(restIndices, restLimits, restWeights, coords[:, :3])
       del coords
 
       data = (temp, rmsd, nViol, nRep[0])
