@@ -2,6 +2,7 @@ import numpy
 from numpy import dtype
 import pyopencl as cl
 import time
+from collision.misc import roundUp
 
 BOLTZMANN_K = 0.0019872041
 
@@ -112,15 +113,15 @@ def runDynamics(ctx, cq, kernels, collider,
     0, nCoords * 4 * dtype('float64').itemsize
   )
   e = kernels['getRepulsiveForce'](
-    cq, (nRep,), None,
-    repList_buf, forces_buf, coords_buf, radii_buf, masses_buf, fConstR,
+    cq, (roundUp(nRep[0], 64),), None,
+    repList_buf, forces_buf, coords_buf, radii_buf, masses_buf, fConstR, nRep[0],
     wait_for=[zero_forces]
   )
   e = kernels['getRestraintForce'](
-    cq, (nAmbig-1,), None,
-    restIndices_buf, restLimits_buf, restWeights_buf, restAmbig_buf,
-    coords_buf, forces_buf, fConstD, 0.5,
-    wait_for=[zero_forces]
+      cq, (roundUp(nAmbig-1, 64),), None,
+      restIndices_buf, restLimits_buf, restWeights_buf, restAmbig_buf,
+      coords_buf, forces_buf, fConstD, 0.5, nAmbig-1,
+      wait_for=[zero_forces]
   )
   cl.wait_for_events([cl.enqueue_barrier(cq)])
 
@@ -164,8 +165,8 @@ def runDynamics(ctx, cq, kernels, collider,
     del veloc
 
     e = kernels['updateMotion'](
-      cq, (nCoords,), None,
-      coords_buf, veloc_buf, accel_buf, masses_buf, forces_buf, tStep0, r,
+      cq, (roundUp(nCoords, 64),), None,
+      coords_buf, veloc_buf, accel_buf, masses_buf, forces_buf, tStep0, r, nCoords,
     )
     (veloc, _) = cl.enqueue_map_buffer(
       cq, veloc_buf, cl.map_flags.READ,
@@ -176,14 +177,14 @@ def runDynamics(ctx, cq, kernels, collider,
       0, nCoords * 4 * dtype('float64').itemsize, wait_for=[e]
     )
     e = kernels['getRepulsiveForce'](
-      cq, (nRep,), None,
-      repList_buf, forces_buf, coords_buf, radii_buf, masses_buf, fConstR,
+      cq, (roundUp(nRep[0], 64),), None,
+      repList_buf, forces_buf, coords_buf, radii_buf, masses_buf, fConstR, nRep[0],
       wait_for=[zero_forces]
     )
     e = kernels['getRestraintForce'](
-      cq, (nAmbig-1,), None,
+      cq, (roundUp(nAmbig-1, 64),), None,
       restIndices_buf, restLimits_buf, restWeights_buf, restAmbig_buf,
-      coords_buf, forces_buf, fConstD, 0.5,
+      coords_buf, forces_buf, fConstD, 0.5, nAmbig-1,
       wait_for=[zero_forces]
     )
     cl.wait_for_events([cl.enqueue_barrier(cq)])
@@ -192,8 +193,8 @@ def runDynamics(ctx, cq, kernels, collider,
     del veloc
 
     e = kernels['updateVelocity'](
-      cq, (nCoords,), None,
-      veloc_buf, masses_buf, forces_buf, accel_buf, tStep0, r,
+      cq, (roundUp(nCoords, 64),), None,
+      veloc_buf, masses_buf, forces_buf, accel_buf, tStep0, r, nCoords,
     )
 
     (veloc, _) = cl.enqueue_map_buffer(

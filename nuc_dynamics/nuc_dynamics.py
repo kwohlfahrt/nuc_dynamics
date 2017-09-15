@@ -634,23 +634,23 @@ def hierarchical_annealing(ctx, cq, kernels, start_coords, contacts, images,
 
 
 def compile_kernels(ctx):
-  from numpy import float64, int32
+  from numpy import float64, int32, uint32
 
   with (Path(__file__).parent / "kernels.cl").open() as f:
     program = cl.Program(ctx, f.read()).build()
   kernels = ['updateVelocity', 'updateMotion', 'getRepulsiveForce', 'getRestraintForce']
   kernels = {name: getattr(program, name) for name in kernels}
   kernels['updateVelocity'].set_scalar_arg_dtypes(
-    [None, None, None, None, float64, float64]
+    [None, None, None, None, float64, float64, uint32]
   )
   kernels['updateMotion'].set_scalar_arg_dtypes(
-    [None, None, None, None, None, float64, float64]
+    [None, None, None, None, None, float64, float64, uint32]
   )
   kernels['getRepulsiveForce'].set_scalar_arg_dtypes(
-    [None, None, None, None, None, float64]
+    [None, None, None, None, None, float64, uint32]
   )
   kernels['getRestraintForce'].set_scalar_arg_dtypes(
-    [None, None, None, None, None, None, float64, float64]
+    [None, None, None, None, None, None, float64, float64, uint32]
   )
   return kernels
 

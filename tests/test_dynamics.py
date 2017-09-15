@@ -70,7 +70,8 @@ def test_restraint_force(ctx, cq, kernels):
 
     e = kernels['getRestraintForce'](
         cq, (len(ambig) - 1,), None,
-        indices_buf, limits_buf, weights_buf, ambig_buf, coords_buf, forces_buf, 1.0, 0.5,
+        indices_buf, limits_buf, weights_buf, ambig_buf, coords_buf, forces_buf,
+        1.0, 0.5, len(ambig) - 1,
     )
 
     (forces, _) = cl.enqueue_map_buffer(

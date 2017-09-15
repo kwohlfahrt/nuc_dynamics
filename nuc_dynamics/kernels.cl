@@ -2,7 +2,10 @@ kernel void updateVelocity(global double3 * const veloc,
                            global const double * const masses,
                            global const double3 * const forces,
                            global const double3 * const accel,
-                           const double tStep, const double r) {
+                           const double tStep, const double r,
+                           const uint n) {
+    if (get_global_id(0) >= n)
+        return;
     const size_t i = get_global_id(0);
 
     veloc[i] += 0.5 * tStep * (forces[i] / masses[i] + r * veloc[i] - accel[i]);
@@ -13,7 +16,10 @@ kernel void updateMotion(global double3 * const coords,
                          global double3 * const accel,
                          global const double * const masses,
                          global const double3 * const forces,
-                         const double tStep, const double r) {
+                         const double tStep, const double r,
+                         const uint n) {
+    if (get_global_id(0) >= n)
+        return;
     const size_t i = get_global_id(0);
 
     accel[i] = forces[i] / masses[i] + r * veloc[i];
@@ -44,7 +50,9 @@ kernel void getRepulsiveForce(global const int * const repList,
                               global const double3 * const coords,
                               global const double * const radii,
                               global const double * const masses,
-                              const double fConst) {
+                              const double fConst, const uint n) {
+    if (get_global_id(0) >= n)
+        return;
     const size_t i = get_global_id(0);
 
     const int j = repList[i*2+0];
@@ -77,7 +85,10 @@ kernel void getRestraintForce(global const uint2 * const restIndices,
                               global const uint * const restAmbig,
                               global const double3 * const coords,
                               global double * const forces,
-                              const double fConst, const double switchRatio) {
+                              const double fConst, const double switchRatio,
+                              const uint n) {
+    if (get_global_id(0) >= n)
+        return;
     const size_t i = restAmbig[get_global_id(0)];
     const size_t nAmbig = restAmbig[get_global_id(0) + 1] - i;
 
