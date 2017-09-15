@@ -1,6 +1,7 @@
 import numpy as np
 import pyopencl as cl
 import pytest
+from pathlib import Path
 
 @pytest.fixture
 def ctx():
@@ -92,3 +93,25 @@ def test_restraint_force(ctx, cq, kernels):
 
     print(forces)
     np.testing.assert_allclose(forces[:, :3], expected)
+
+def test_atom_fadd(ctx, cq):
+    kernel = ("""
+    kernel void test(global double * const sum, global const double * const inputs) {
+        atom_fadd(sum, inputs[get_global_id(0)]);
+    }""")
+    with (Path(__file__).parent.parent / "nuc_dynamics" / "kernels.cl").open() as f:
+        program = cl.Program(ctx, f.read() + kernel).build()
+
+    values = np.ones(4000, dtype='float64')
+
+    values_buf = cl.Buffer(ctx, cl.mem_flags.COPY_HOST_PTR, hostbuf=values)
+    sum_buf = cl.Buffer(
+        ctx, cl.mem_flags.COPY_HOST_PTR, hostbuf=np.zeros(1, dtype='float64')
+    )
+    e = program.test(cq, (len(values),), None, sum_buf, values_buf)
+
+    (result, _) = cl.enqueue_map_buffer(
+        cq, sum_buf, cl.map_flags.READ, 0, 1, np.dtype('float64'),
+        wait_for=[e], is_blocking=True,
+    )
+    assert result[0] == values.sum()
