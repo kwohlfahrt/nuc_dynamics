@@ -7,6 +7,22 @@ Restraint = dtype([('indices', 'int32', 2), ('dists', 'float64', 2),
                    ('ambiguity', 'int32'), ('weight', 'float64')])
 Contact = dtype([('pos', 'uint32', 2), ('ambiguity', 'int32')])
 
+
+def load_points(path):
+    if path.suffix == '.txt':
+        from numpy import loadtxt
+        return loadtxt(str(path))
+    if path.suffix == '.csv':
+        from numpy import loadtxt
+        return loadtxt(str(path), delimiter=',')
+    elif path.suffix == '.pickle':
+        with path.open('rb') as f:
+            return load(f)
+    else:
+        raise ValueError("File type '{}' not recognized (need '.csv' or '.pickle')"
+                         .format(path.suffix))
+
+
 def load_ncc_file(file_path):
   """Load chromosome and contact data from NCC format file, as output from NucProcess"""
 
@@ -269,6 +285,24 @@ def flatten_dict(d):
   return r
 
 
+def tree():
+    from collections import defaultdict
+    def tree_():
+        return defaultdict(tree_)
+    return tree_()
+
+
+def unflatten_dict(d):
+    r = tree()
+
+    for ks, v in d.items():
+        d = r
+        for k in ks[:-1]:
+            d = d[k]
+        d[ks[-1]] = v
+    return r
+
+
 def concatenate_restraints(restraint_dict, pos_dict):
   from itertools import accumulate, chain
   from functools import partial
@@ -333,27 +367,20 @@ def bin_restraints(restraints):
   binned['weight'] = bincount(idxs, weights=restraints['weight'])
   return binned
 
-def merge_restraints(*restraints):
+def merge_dicts(*dicts):
   from functools import partial
   from collections import defaultdict
   from numpy import empty, concatenate
 
-  new = defaultdict(partial(defaultdict, list))
-  for restraint in restraints:
-    for a in restraint:
-      for b in restraint[a]:
-        new[a][b].append(restraint[a][b])
-
-  for a in new:
-    for b in new[a]:
-      new[a][b] = concatenate(new[a][b])
-    new[a] = dict(new[a])
-  new = dict(new)
-
-  return new
+  new = defaultdict(list)
+  for d in dicts:
+    for k, v in flatten_dict(d).items():
+      new[k].append(v)
+  new = {k: concatenate(v) for k, v in new.items()}
+  return unflatten_dict(new)
 
 
-def anneal_genome(contact_dict, image_contacts, particle_size,
+def anneal_genome(contact_dict, images, particle_size,
                   prev_seq_pos_dict=None, start_coords=None,
                   contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
                   image_weight=1.0, temp_range=(5000.0, 10.0), temp_steps=500,
@@ -377,33 +404,33 @@ def anneal_genome(contact_dict, image_contacts, particle_size,
     if random_seed is not None:
       random.seed(random_seed)
     particle_size = int32(particle_size)
-    seq_pos_dict = calc_bins(calc_limits(contact_dict), particle_size)
-    chromosomes = sorted(seq_pos_dict)
 
-    images = sorted(set.union(set(image_contacts), *map(set, image_contacts.values()))
-                    - set(chromosomes))
+    chromosomes = sorted(
+        set.union(set(contact_dict), *map(set, contact_dict.values())) - images
+    )
+    images = sorted(images)
+
+    seq_pos_dict = calc_bins(calc_limits(contact_dict), particle_size)
     seq_pos_dict.update({img: arange(start_coords[img].shape[1], dtype='int32') for img in images})
+
     points = sorted(chromosomes + images)
 
-    restraint_dict = merge_restraints(
-      # Contact restraints
-      calc_restraints(
+    restraint_dict = calc_restraints(
         contact_dict, seq_pos_dict, scale=bead_size,
         lower=contact_dist[0], upper=contact_dist[1], weight=1.0
-      ),
-      # Image restraints
-      calc_restraints(
-        image_contacts, seq_pos_dict, scale=bead_size,
-        lower=contact_dist[0], upper=contact_dist[1], weight=image_weight,
-      )
     )
+
+    # Apply image weighting
+    for chr_a, chr_b in flatten_dict(restraint_dict):
+        if chr_a in images or chr_b in images:
+            restraint_dict[chr_a][chr_b]['weight'] *= image_weight
 
     # Adjust to keep force/particle approximately constant
     dist = 215.0 * (sum(map(len, seq_pos_dict.values())) /
                     sum(map(lambda v: v['weight'].sum(),
                             flatten_dict(restraint_dict).values())))
 
-    restraint_dict = merge_restraints(
+    restraint_dict = merge_dicts(
       restraint_dict,
       # Backbone restraints
       {chr: {chr: backbone_restraints(
@@ -425,13 +452,12 @@ def anneal_genome(contact_dict, image_contacts, particle_size,
 
     # Equal unit masses and radii for all particles
     masses = {chr: ones(len(pos), float) for chr, pos in seq_pos_dict.items()}
-    masses.update({img: full(coords[img].shape[1], float('inf')) for img in image_contacts})
+    masses.update({img: full(coords[img].shape[1], float('inf')) for img in images})
 
     radii = {chr: full(len(pos), bead_size, float)
              for chr, pos in seq_pos_dict.items()}
     # No collisions, so radii don't matter
-    radii.update({img: zeros(coords[img].shape[1], dtype='float')
-                  for img in image_contacts})
+    radii.update({img: zeros(coords[img].shape[1], dtype='float') for img in images})
     repDists = {chr: r * 0.75 for chr, r in radii.items()}
 
     # Concatenate chromosomal data into a single array of particle restraints
@@ -477,8 +503,8 @@ def anneal_genome(contact_dict, image_contacts, particle_size,
     return coords_dict, seq_pos_dict, restraint_dict
 
 
-def hierarchical_annealing(start_coords, contacts, image_contacts, particle_sizes,
-                           num_models=1, **kwargs):
+def hierarchical_annealing(start_coords, contacts, images,
+                           particle_sizes, num_models=1, **kwargs):
     from numpy import broadcast_to
 
     # Unspecified coords will be random
@@ -503,8 +529,8 @@ def hierarchical_annealing(start_coords, contacts, image_contacts, particle_size
                                      particle_size, threshold=5.0)
 
         coords_dict, particle_seq_pos, restraint_dict = anneal_genome(
-          contacts, image_contacts, particle_size, prev_seq_pos, start_coords,
-          num_models=num_models, **kwargs
+            contacts, images, particle_size,
+            prev_seq_pos, start_coords, num_models=num_models, **kwargs
         )
 
         # Next stage based on previous stage's 3D coords
@@ -521,9 +547,11 @@ def main(args=None):
     from numpy import concatenate, array
 
     parser = ArgumentParser(description="Calculate a structure from a contact file.")
-    parser.add_argument("contacts", type=Path, help="The .ncc file to load contacts from")
-    parser.add_argument("CENPA", type=Path, help="The .pickle file to load CENPA coordinates from")
+    parser.add_argument("contacts", type=Path, nargs='+',
+                        help="The .ncc file to load contacts from")
     parser.add_argument("output", type=Path, help="The .nuc file to save the structure in")
+    parser.add_argument("--image", type=str, nargs=2, action='append',
+                        help="The name and file to load coordinates from")
     parser.add_argument("--isolated-threshold", type=float, default=2e6,
                         help="The distance threshold for isolated contacts")
     parser.add_argument("--particle-sizes", type=float, nargs='+',
@@ -554,27 +582,18 @@ def main(args=None):
 
     args = parser.parse_args(argv[1:] if args is None else args)
 
-    contacts = load_ncc_file(str(args.contacts))
+    contacts, image_contacts = map(load_ncc_file, map(str, args.contacts))
     contacts = remove_isolated_contacts(contacts, threshold=args.isolated_threshold)
+    contacts = merge_dicts(contacts, image_contacts)
 
     # Load image coordinates, center and scale
-    image_coords = {'CENPA': load_image_coords(args.CENPA)}
+    image_coords = {name: load_points(Path(path)) for name, path in args.image}
     image_mean = concatenate(list(image_coords.values())).mean(axis=0)
     image_coords = {k: (v - image_mean) * args.image_scale
                     for k, v in image_coords.items()}
 
-    chromosomes = set.union(set(contacts), *map(set, contacts.values()))
-    # Use -ive ambiguity groups to ensure no overlap with contact groups
-    image_contacts = {'CENPA': {
-      chr: array(
-        [((spot, 0), -(spot+1)) for spot in range(len(image_coords['CENPA']))],
-        dtype=Contact
-      )
-      for chr in chromosomes
-    }}
-
     coords, seq_pos, restraints = hierarchical_annealing(
-        image_coords, contacts, image_contacts,
+        image_coords, contacts, set(image_coords.keys()),
         args.particle_sizes,
         contact_dist=args.contact_dist, backbone_dist=args.backbone_dist,
         image_weight=args.image_weight,

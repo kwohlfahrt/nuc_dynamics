@@ -58,6 +58,14 @@ def test_flatten_dict():
 
     assert expected == flatten_dict(data)
 
+def test_unflatten_dict():
+    from nuc_dynamics import unflatten_dict
+
+    expected = {0: {1: {2: 'foo', 3: 'foo2'}, 'bar': 'baz'}, 5: 'foo'}
+    data = {(0, 1, 2): 'foo', (0, 1, 3): 'foo2', (0, 'bar'): 'baz', (5,): 'foo'}
+
+    assert expected == unflatten_dict(data)
+
 def test_concatenate_restraints():
     from nuc_dynamics import concatenate_restraints, Restraint
 
@@ -187,14 +195,14 @@ def test_remove_isolated_contacts():
 
 
 def test_merge_restraints():
-    from nuc_dynamics import merge_restraints
+    from nuc_dynamics import merge_dicts
 
     # Not correct dtype, but shouldn't matter
     a = {'foo': {'bar': [0], 'foo': [1, 5]}}
     b = {'foo': {'bar': [9, 10]}, 'baz': {'bar': [6]}}
 
     merged = {'foo': {'bar': [0, 9, 10], 'foo': [1, 5]}, 'baz': {'bar': [6]}}
-    testing.assert_equal(merge_restraints(a, b), merged)
+    testing.assert_equal(merge_dicts(a, b), merged)
 
 
 def test_bin_restraints():
@@ -224,3 +232,38 @@ def test_bin_restraints():
         ((3, 5), (0.8, 1.1), 2, 1.0,),
     ], dtype=Restraint)
     np.testing.assert_array_equal(bin_restraints(restraints), expected)
+
+
+def test_merge_contacts():
+    from nuc_dynamics import merge_dicts, Contact
+
+    contacts = [
+        {'a': {'a': np.array([((10, 50), 0),
+                              ((45, 66), 1),], dtype=Contact),
+               'b': np.array([(( 5, 29), 0),
+                              ((86,  4), 0),], dtype=Contact),},
+         'b': {'a': np.array([((10,  9), 4),
+                              (( 6, 49), 0),], dtype=Contact)}},
+        {'a': {'a': np.array([((11, 50), 0),
+                              ((44, 67), 1),], dtype=Contact),
+               'c': np.array([(( 5, 29), 0),
+                              ((86,  8), 0),], dtype=Contact),},
+         'b': {'a': np.array([((10,  9), 4),
+                              (( 4, 49), 1),], dtype=Contact)}},
+    ]
+
+    expected = {
+        'a': {'a': np.array([((10, 50), 0),
+                             ((45, 66), 1),
+                             ((11, 50), 0),
+                             ((44, 67), 1),], dtype=Contact),
+              'b': np.array([(( 5, 29), 0),
+                             ((86,  4), 0),], dtype=Contact),
+              'c': np.array([(( 5, 29), 0),
+                             ((86,  8), 0),], dtype=Contact),},
+        'b': {'a': np.array([((10,  9), 4),
+                             (( 6, 49), 0),
+                             ((10,  9), 4),
+                             (( 4, 49), 1),], dtype=Contact)},
+    }
+    np.testing.assert_equal(merge_dicts(*contacts), expected)
