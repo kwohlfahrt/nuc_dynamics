@@ -1,6 +1,11 @@
 from pathlib import Path
+from numpy import dtype
 
-from .nuc_cython import (runDynamics, Restraint)
+from .nuc_cython import runDynamics
+
+Restraint = dtype([('indices', 'int32', 2), ('dists', 'float64', 2),
+                   ('ambiguity', 'int32'), ('weight', 'float64')])
+Contact = dtype([('pos', 'uint32', 2), ('ambiguity', 'int32')])
 
 def load_ncc_file(file_path):
   """Load chromosome and contact data from NCC format file, as output from NucProcess"""
@@ -32,11 +37,11 @@ def load_ncc_file(file_path):
       if chr_b not in contact_dict[chr_a]:
         contact_dict[chr_a][chr_b] = []
 
-      contact_dict[chr_a][chr_b].append((pos_a, pos_b, int(ambig_group)))
+      contact_dict[chr_a][chr_b].append(((pos_a, pos_b), int(ambig_group)))
 
   for chr_a in contact_dict:
     for chr_b in contact_dict[chr_a]:
-      contact_dict[chr_a][chr_b] = array(contact_dict[chr_a][chr_b]).T
+      contact_dict[chr_a][chr_b] = array(contact_dict[chr_a][chr_b], dtype=Contact)
   return contact_dict
 
 
@@ -44,10 +49,10 @@ def calc_limits(contact_dict):
   chromo_limits = {}
 
   for chrs, contacts in flatten_dict(contact_dict).items():
-    if contacts.shape[1] < 1:
+    if len(contacts) < 1:
       continue
 
-    for chr, seq_pos in zip(chrs, contacts):
+    for chr, seq_pos in zip(chrs, contacts['pos'].T):
       min_pos = seq_pos.min()
       max_pos = seq_pos.max()
 
@@ -101,7 +106,7 @@ def remove_isolated_contacts(contact_dict, threshold=int(2e6), pos_error=100):
   new_contacts = defaultdict(dict)
 
   for (chromoA, chromoB), contacts in flatten_dict(contact_dict).items():
-    positions = array(contacts[:2], 'int32').T
+    positions = contacts['pos'].astype('int32')
     if len(positions) == 0: # Sometimes empty e.g. for MT, Y chromos
       continue
     pos_a = positions[:, 0][None, ...]
@@ -113,7 +118,7 @@ def remove_isolated_contacts(contact_dict, threshold=int(2e6), pos_error=100):
     supported |= (between(abs(pos_a - pos_b.T), pos_error, threshold).any(axis=0) &
                   between(abs(pos_b - pos_a.T), pos_error, threshold).any(axis=0))
 
-    new_contacts[chromoA][chromoB] = contacts[:,supported]
+    new_contacts[chromoA][chromoB] = contacts[supported]
   return dict(new_contacts)
 
 
@@ -293,13 +298,13 @@ def calc_restraints(contact_dict, pos_dict,
   dists = array([[lower, upper]]) * scale
 
   r = defaultdict(dict)
-  for (chr_a, chr_b), (pos_a, pos_b, ambig) in flatten_dict(contact_dict).items():
-    r[chr_a][chr_b] = empty(len(ambig), dtype=Restraint)
+  for (chr_a, chr_b), contacts in flatten_dict(contact_dict).items():
+    r[chr_a][chr_b] = empty(len(contacts), dtype=Restraint)
 
-    idxs_a = searchsorted(pos_dict[chr_a], pos_a)
-    idxs_b = searchsorted(pos_dict[chr_b], pos_b)
+    idxs_a = searchsorted(pos_dict[chr_a], contacts['pos'][:, 0])
+    idxs_b = searchsorted(pos_dict[chr_b], contacts['pos'][:, 1])
     r[chr_a][chr_b]['indices'] = array([idxs_a, idxs_b]).T
-    r[chr_a][chr_b]['ambiguity'] = ambig
+    r[chr_a][chr_b]['ambiguity'] = contacts['ambiguity']
     r[chr_a][chr_b]['dists'] = dists
     r[chr_a][chr_b]['weight'] = weight
   return dict(r)
@@ -561,7 +566,10 @@ def main(args=None):
     chromosomes = set.union(set(contacts), *map(set, contacts.values()))
     # Use -ive ambiguity groups to ensure no overlap with contact groups
     image_contacts = {'CENPA': {
-      chr: array([[spot, 0, -(spot+1)] for spot in range(len(image_coords['CENPA']))]).T
+      chr: array(
+        [((spot, 0), -(spot+1)) for spot in range(len(image_coords['CENPA']))],
+        dtype=Contact
+      )
       for chr in chromosomes
     }}
 

@@ -5,9 +5,6 @@ import numpy, time
 
 BOLTZMANN_K = 0.0019872041
 
-Restraint = dtype([('indices', 'int32', 2), ('dists', 'float64', 2),
-                   ('ambiguity', 'int32'), ('weight', 'float64')])
-
 #ctypedef int_t   int
 #ctypedef double_t double
 

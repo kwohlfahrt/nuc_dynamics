@@ -59,8 +59,7 @@ def test_flatten_dict():
     assert expected == flatten_dict(data)
 
 def test_concatenate_restraints():
-    from nuc_dynamics.nuc_cython import Restraint
-    from nuc_dynamics import concatenate_restraints
+    from nuc_dynamics import concatenate_restraints, Restraint
 
     seq_pos = {'a': np.arange(10), 'b': np.arange(20)}
     restraints = {'a': {'a': np.array([([ 4,  5], [0.3, 1.3], 0, 1.3),
@@ -84,19 +83,18 @@ def test_concatenate_restraints():
     np.testing.assert_array_equal(expected, concatenate_restraints(restraints, seq_pos))
 
 def test_calc_restraints():
-    from nuc_dynamics.nuc_cython import Restraint
-    from nuc_dynamics import flatten_dict, calc_restraints
+    from nuc_dynamics import flatten_dict, calc_restraints, Restraint, Contact
 
     seq_pos = {'a': np.arange(10, 111, 10, dtype='int32'),
                'b': np.arange(40, 221, 20, dtype='int32')}
-    contacts = {'a': {'a': np.array([[ 21,  80, 0],
-                                     [ 20,  81, 1],
-                                     [  2, 109, 1],
-                                     [ 19,  81, 2],
-                                     [  3, 108, 2],], dtype='int').T,
-                      'b': np.array([[ 11, 120,-3],
-                                     [ 40,  60, 4]], dtype='int').T},
-                'b': {'b': np.array([[ 50,  50, 5]], dtype='int').T}}
+    contacts = {'a': {'a': np.array([((21,  80), 0),
+                                     ((20,  81), 1),
+                                     (( 2, 109), 1),
+                                     ((19,  81), 2),
+                                     (( 3, 108), 2),], dtype=Contact),
+                      'b': np.array([((11, 120),-3),
+                                     ((40,  60), 4)], dtype=Contact)},
+                'b': {'b': np.array([((50,  50), 5)], dtype=Contact)}}
 
     expected = {'a': {'a': np.array([([ 2,  7], [0.8, 1.2], 0, 1.0),
                                      ([ 1,  8], [0.8, 1.2], 1, 1.0),
@@ -152,14 +150,14 @@ def test_get_interpolated_coords_edge():
 
 
 def test_calc_limits():
-    from nuc_dynamics import calc_limits
+    from nuc_dynamics import calc_limits, Contact
 
-    contacts = {'a': {'a': np.array([[10, 50, 0],
-                                     [45, 66, 0],]).T,
-                      'b': np.array([[ 5, 29, 0],
-                                     [86,  4, 0],]).T,},
-                'b': {'a': np.array([[10,  9, 0],
-                                     [ 6, 49, 0],]).T}}
+    contacts = {'a': {'a': np.array([((10, 50), 0),
+                                     ((45, 66), 0),], dtype=Contact),
+                      'b': np.array([(( 5, 29), 0),
+                                     ((86,  4), 0),], dtype=Contact),},
+                'b': {'a': np.array([((10,  9), 0),
+                                     (( 6, 49), 0),], dtype=Contact)}}
 
 
     expected = {'a': (5, 86), 'b': (4, 29)}
@@ -175,16 +173,16 @@ def test_between():
 
 
 def test_remove_isolated_contacts():
-    from nuc_dynamics import remove_isolated_contacts
+    from nuc_dynamics import remove_isolated_contacts, Contact
 
     contact_dict = {'1': {'2': np.array([
-        [500, 800, 0], [505, 795, 0], [809, 509, 0],
-        [900, 200, 0], [500, 900, 0], [901, 201, 0],
-    ]).T}}
+        ((500, 800), 0), ((505, 795), 0), ((809, 509), 0),
+        ((900, 200), 0), ((500, 900), 0), ((901, 201), 0),
+    ], dtype=Contact)}}
 
     expected = {'1': {'2': np.array([
-        [500, 800, 0], [505, 795, 0], [809, 509, 0],
-    ]).T}}
+        ((500, 800), 0), ((505, 795), 0), ((809, 509), 0),
+    ], dtype=Contact)}}
     np.testing.assert_equal(remove_isolated_contacts(contact_dict, 10, 2), expected)
 
 
