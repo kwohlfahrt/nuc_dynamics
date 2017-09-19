@@ -235,7 +235,7 @@ def runDynamics(ctx, cq, kernels, collider, indexer,
     cl.wait_for_events([cl.enqueue_barrier(cq)])
 
     scaling = 1.0 + sConst * (
-        divergence(image_coords, image_forces) / (fConstD * std(image_coords[:, :3]) ** 2)
+        divergence(image_coords, image_forces) / (fConstD * radii.mean() ** 2)
     )
 
     image_coords *= scaling
