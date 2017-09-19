@@ -38,6 +38,8 @@ def load_ncc_file(file_path):
 
   with f_open(file_path) as file_obj:
     for line in file_obj:
+      if line.startswith('#'):
+          continue
       chr_a, f_start_a, f_end_a, start_a, end_a, strand_a, chr_b, f_start_b, f_end_b, start_b, end_b, strand_b, ambig_group, pair_id, swap_pair = line.split()
 
       pos_a = int(f_start_a if strand_a == '+' else f_end_a)
@@ -550,7 +552,7 @@ def main(args=None):
     parser.add_argument("contacts", type=Path, nargs='+',
                         help="The .ncc file to load contacts from")
     parser.add_argument("output", type=Path, help="The .nuc file to save the structure in")
-    parser.add_argument("--image", type=str, nargs=2, action='append',
+    parser.add_argument("--image", type=str, nargs=2, action='append', default=[],
                         help="The name and file to load coordinates from")
     parser.add_argument("--isolated-threshold", type=float, default=2e6,
                         help="The distance threshold for isolated contacts")
@@ -582,9 +584,8 @@ def main(args=None):
 
     args = parser.parse_args(argv[1:] if args is None else args)
 
-    contacts, image_contacts = map(load_ncc_file, map(str, args.contacts))
+    contacts = merge_dicts(*map(load_ncc_file, map(str, args.contacts)))
     contacts = remove_isolated_contacts(contacts, threshold=args.isolated_threshold)
-    contacts = merge_dicts(contacts, image_contacts)
 
     # Load image coordinates, center and scale
     image_coords = {name: load_points(Path(path)) for name, path in args.image}
