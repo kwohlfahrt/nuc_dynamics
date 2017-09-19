@@ -563,7 +563,7 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
       ctx, cl.mem_flags.HOST_NO_ACCESS | cl.mem_flags.READ_ONLY |
       cl.mem_flags.COPY_HOST_PTR,
       hostbuf=flatnonzero(masses_map == float('inf')).astype('uint32')
-    )
+    ) if images else None
     nimage_indices = (masses_map == float('inf')).sum()
 
     del coords_map, masses_map, radii_map
