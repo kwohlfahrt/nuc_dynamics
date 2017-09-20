@@ -210,6 +210,43 @@ def test_remove_isolated_contacts_ignore():
     np.testing.assert_equal(remove_isolated_contacts(contact_dict, 10, 2, {"1"}), expected)
 
 
+def test_remove_violated_contacts():
+    from nuc_dynamics import remove_violated_contacts, Contact
+
+    pos_dict = {'1': np.array([4, 6, 10]), '2': np.array([3, 4, 5, 6])}
+    coords_dict = {
+        '1': np.array([
+            [[1.0, 0.0, 0.0],
+             [2.0, 0.0, 0.0],
+             [3.0, 0.0, 0.0]],
+            [[1.0, 1.0, 0.0],
+             [2.0, 1.0, 0.0],
+             [3.0, 1.0, 0.0]],
+        ]),
+        '2': np.array([
+            [[1.0, 0.0, 2.0],
+             [2.0, 0.0, 0.0],
+             [3.0, 0.0, 0.0],
+             [4.0, 0.0, 10.0]],
+            [[1.0, 1.0, 0.0],
+             [2.0, 1.0, 0.0],
+             [3.0, 1.0, 0.0],
+             [4.0, 1.0, 10.0]],
+        ]),
+    }
+
+    contact_dict = {'1': {'2': np.array([
+        ((4, 3), 0), ((6, 6), 0), ((5, 3.5), 0),
+    ], dtype=Contact)}}
+
+    expected = {'1': {'2': np.array([
+        ((4, 3), 0), ((5, 3.5), 0),
+    ], dtype=Contact)}}
+
+    result = remove_violated_contacts(contact_dict, coords_dict, pos_dict)
+    np.testing.assert_equal(result, expected)
+
+
 def test_merge_restraints():
     from nuc_dynamics import merge_dicts
 

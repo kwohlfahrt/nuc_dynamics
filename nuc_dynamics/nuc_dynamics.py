@@ -145,7 +145,7 @@ def remove_isolated_contacts(contact_dict, threshold=int(2e6), pos_error=100, ig
   return dict(new_contacts)
 
 
-def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, particle_size, threshold=5.0):
+def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, threshold=5.0):
   """
   Remove contacts whith structure distances that exceed a given threshold
   """
@@ -160,8 +160,8 @@ def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, partic
       if chr_b not in coords_dict:
         continue
 
-      contact_pos_a = contacts[0].astype(int32)
-      contact_pos_b = contacts[1].astype(int32)
+      contact_pos_a = contacts['pos'][:, 0].astype(int32)
+      contact_pos_b = contacts['pos'][:, 1].astype(int32)
 
       coords_a = coords_dict[chr_a]
       coords_b = coords_dict[chr_b]
@@ -181,7 +181,7 @@ def remove_violated_contacts(contact_dict, coords_dict, particle_seq_pos, partic
 
       # Select contacts with distances below distance threshold
       indices = (struc_dists < threshold).nonzero()[0]
-      new_contacts[chr_a][chr_b] = contacts[:,indices]
+      new_contacts[chr_a][chr_b] = contacts[indices]
 
   return dict(new_contacts)
 
@@ -529,11 +529,13 @@ def hierarchical_annealing(start_coords, contacts, images,
         # Can remove large violations (noise contacts inconsistent with structure)
         # once we have a resonable resolution structure
         if stage == 4:
-            remove_violated_contacts(contacts, coords_dict, particle_seq_pos,
-                                     particle_size, threshold=6.0)
+            remove_violated_contacts(
+                contacts, coords_dict, particle_seq_pos, threshold=6.0
+            )
         elif stage == 5:
-            remove_violated_contacts(contacts, coords_dict, particle_seq_pos,
-                                     particle_size, threshold=5.0)
+            remove_violated_contacts(
+                contacts, coords_dict, particle_seq_pos, threshold=5.0
+            )
 
         coords_dict, particle_seq_pos, restraint_dict = anneal_genome(
             contacts, images, particle_size,
