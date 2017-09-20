@@ -103,6 +103,8 @@ def export_nuc_coords(file_path, coords_dict, seq_pos_dict, restraint_dict, calc
         value = 'None'
       elif isinstance(value, Path):
         value = str(value)
+      elif isinstance(value, tuple):
+        value = list(value)
       calculation.attrs[arg] = value
     restraints = structure.create_group('restraints')
     for (chr_a, chr_b), data in flatten_dict(restraint_dict).items():
@@ -612,7 +614,10 @@ def main(args=None):
         num_models=args.models,
     )
 
-    export_nuc_coords(str(args.output), coords, seq_pos, restraints, vars(args))
+    # Does not deal with sequences of variable length strings
+    calc_args = {k: v for k, v in vars(args).items()
+                 if k not in {'image', 'contacts'}}
+    export_nuc_coords(str(args.output), coords, seq_pos, restraints, calc_args)
     print('Saved structure file to: %s' % str(args.output))
 
 if __name__ == "__main__":
