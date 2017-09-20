@@ -186,12 +186,28 @@ def test_remove_isolated_contacts():
     contact_dict = {'1': {'2': np.array([
         ((500, 800), 0), ((505, 795), 0), ((809, 509), 0),
         ((900, 200), 0), ((500, 900), 0), ((901, 201), 0),
+        ((501, 801), 0),
     ], dtype=Contact)}}
 
     expected = {'1': {'2': np.array([
-        ((500, 800), 0), ((505, 795), 0), ((809, 509), 0),
+        ((500, 800), 0), ((505, 795), 0), ((809, 509), 0), ((501, 801), 0),
     ], dtype=Contact)}}
     np.testing.assert_equal(remove_isolated_contacts(contact_dict, 10, 2), expected)
+
+
+def test_remove_isolated_contacts_ignore():
+    # Useful for e.g. image contacts
+    from nuc_dynamics import remove_isolated_contacts, Contact
+
+    contact_dict = {'1': {'2': np.array([
+            ((500, 800), 0), ((600, 200), 0),
+    ], dtype=Contact)}}
+
+    expected = {'1': {'2': np.array([
+            ((500, 800), 0), ((600, 200), 0),
+    ], dtype=Contact)}}
+    np.testing.assert_equal(remove_isolated_contacts(contact_dict, 10, 2, {"2"}), expected)
+    np.testing.assert_equal(remove_isolated_contacts(contact_dict, 10, 2, {"1"}), expected)
 
 
 def test_merge_restraints():

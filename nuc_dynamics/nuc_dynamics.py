@@ -114,7 +114,7 @@ def between(x, a, b):
   return (a < x) & (x < b)
 
 
-def remove_isolated_contacts(contact_dict, threshold=int(2e6), pos_error=100):
+def remove_isolated_contacts(contact_dict, threshold=int(2e6), pos_error=100, ignore=()):
   """
   Select only contacts which are within a given sequence separation of another
   contact, for the same chromosome pair
@@ -125,6 +125,9 @@ def remove_isolated_contacts(contact_dict, threshold=int(2e6), pos_error=100):
 
   for (chromoA, chromoB), contacts in flatten_dict(contact_dict).items():
     positions = contacts['pos'].astype('int32')
+    if chromoA in ignore or chromoB in ignore:
+        new_contacts[chromoA][chromoB] = contacts
+        continue
     if len(positions) == 0: # Sometimes empty e.g. for MT, Y chromos
       continue
     pos_a = positions[:, 0][None, ...]
@@ -584,14 +587,16 @@ def main(args=None):
 
     args = parser.parse_args(argv[1:] if args is None else args)
 
-    contacts = merge_dicts(*map(load_ncc_file, map(str, args.contacts)))
-    contacts = remove_isolated_contacts(contacts, threshold=args.isolated_threshold)
-
     # Load image coordinates, center and scale
     image_coords = {name: load_points(Path(path)) for name, path in args.image}
     image_mean = concatenate(list(image_coords.values())).mean(axis=0)
     image_coords = {k: (v - image_mean) * args.image_scale
                     for k, v in image_coords.items()}
+
+    contacts = merge_dicts(*map(load_ncc_file, map(str, args.contacts)))
+    contacts = remove_isolated_contacts(
+        contacts, threshold=args.isolated_threshold, ignore=image_coords
+    )
 
     coords, seq_pos, restraints = hierarchical_annealing(
         image_coords, contacts, set(image_coords.keys()),
