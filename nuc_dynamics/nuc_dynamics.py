@@ -4,8 +4,10 @@ import pyopencl as cl
 
 from .run import runDynamics
 
-Restraint = dtype([('indices', 'int32', 2), ('dists', 'float64', 2),
-                   ('ambiguity', 'int32'), ('weight', 'float64')])
+fp_type = dtype('float64')
+
+Restraint = dtype([('indices', 'int32', 2), ('dists', fp_type, 2),
+                   ('ambiguity', 'int32'), ('weight', fp_type)])
 Contact = dtype([('pos', 'uint32', 2), ('ambiguity', 'int32')])
 
 
@@ -268,7 +270,7 @@ def backbone_restraints(seq_pos, particle_size, scale=1.0, lower=0.1, upper=1.1,
   restraints['indices'] = arange(len(restraints))[:, None] + offsets
 
   # Normally 1.0 for regular sized particles
-  bounds = array([lower, upper], dtype='float') * scale
+  bounds = array([lower, upper], dtype=fp_type) * scale
   restraints['dists'] = ((seq_pos[1:] - seq_pos[:-1]) / particle_size)[:, None] * bounds
   restraints['ambiguity'] = 0 # Use '0' to represent no ambiguity
   restraints['weight'] = weight
@@ -483,13 +485,15 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
         )
 
     # Equal unit masses and radii for all particles
-    masses = {chr: ones(len(pos), float) for chr, pos in seq_pos_dict.items()}
-    masses.update({img: full(coords[img].shape[1], float('inf')) for img in images})
+    masses = {chr: ones(len(pos), dtype=fp_type) for chr, pos in seq_pos_dict.items()}
+    masses.update({
+        img: full(coords[img].shape[1], float('inf'), dtype=fp_type) for img in images
+    })
 
-    radii = {chr: full(len(pos), bead_size, float)
+    radii = {chr: full(len(pos), bead_size, dtype=fp_type)
              for chr, pos in seq_pos_dict.items()}
     # No collisions, so radii don't matter
-    radii.update({img: zeros(coords[img].shape[1], dtype='float') for img in images})
+    radii.update({img: zeros(coords[img].shape[1], dtype=fp_type) for img in images})
 
     # Concatenate chromosomal data into a single array of particle restraints
     # for structure calculation.
@@ -499,7 +503,7 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
     ambiguity = calc_ambiguity_offsets(restraints['ambiguity'])
 
     n_particles = sum(map(len, seq_pos_dict.values()))
-    coord_size = dtype(('double', 4)).itemsize
+    coord_size = dtype((fp_type, 4)).itemsize
     model_buf_size = roundUp(
       n_particles * coord_size, lcm(coord_size, cq.device.mem_base_addr_align)
     )
@@ -513,10 +517,10 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
       coords_buf[i * model_buf_size : (i+1) * model_buf_size] for i in range(num_models)
     ]
     masses_buf = cl.Buffer(
-      ctx, cl.mem_flags.READ_ONLY, n_particles * dtype('float64').itemsize
+      ctx, cl.mem_flags.READ_ONLY, n_particles * fp_type.itemsize
     )
     radii_buf = cl.Buffer(
-      ctx, cl.mem_flags.READ_ONLY, num_models * n_particles * dtype('float64').itemsize
+      ctx, cl.mem_flags.READ_ONLY, num_models * n_particles * fp_type.itemsize
     )
     rest_indices_buf = cl.Buffer(
       ctx, cl.mem_flags.HOST_READ_ONLY | cl.mem_flags.READ_ONLY |
@@ -537,15 +541,15 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
 
     (coords_map, _) = cl.enqueue_map_buffer(
       cq, coords_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
-      0, coords_buf_shape, dtype('float64'), is_blocking=False
+      0, coords_buf_shape, fp_type, is_blocking=False
     )
     (masses_map, _) = cl.enqueue_map_buffer(
       cq, masses_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
-      0, n_particles, dtype('float64'), is_blocking=False
+      0, n_particles, fp_type, is_blocking=False
     )
     (radii_map, _) = cl.enqueue_map_buffer(
       cq, radii_buf, cl.map_flags.WRITE_INVALIDATE_REGION,
-      0, n_particles, dtype('float64'), is_blocking=False
+      0, n_particles, fp_type, is_blocking=False
     )
     cl.wait_for_events([cl.enqueue_barrier(cq)])
 
@@ -564,7 +568,7 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
     # Update coordinates in the annealing schedule
     time_taken = 0.0
 
-    collider = Collider(ctx, n_particles, 16, 64, coord_dtype='float64')
+    collider = Collider(ctx, n_particles, 16, 64, coord_dtype=fp_type)
 
     for model_coords_buf in model_coords_bufs: # For each repeat calculation
       for temp, repulse in zip(temps, repulses):
@@ -581,8 +585,8 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
         time_taken += dt
 
     (coords_map, _) = cl.enqueue_map_buffer(
-      cq, coords_buf, cl.map_flags.WRITE,
-      0, coords_buf_shape, dtype('float64'), is_blocking=True
+      cq, coords_buf, cl.map_flags.READ,
+      0, coords_buf_shape, fp_type, is_blocking=True
     )
 
     # Convert from single coord array to dict keyed by chromosome
@@ -634,23 +638,23 @@ def hierarchical_annealing(ctx, cq, kernels, start_coords, contacts, images,
 
 
 def compile_kernels(ctx):
-  from numpy import float64, int32, uint32
+  from numpy import int32, uint32
 
   with (Path(__file__).parent / "kernels.cl").open() as f:
     program = cl.Program(ctx, f.read()).build()
   kernels = ['updateVelocity', 'updateMotion', 'getRepulsiveForce', 'getRestraintForce']
   kernels = {name: getattr(program, name) for name in kernels}
   kernels['updateVelocity'].set_scalar_arg_dtypes(
-    [None, None, None, None, float64, float64, uint32]
+    [None, None, None, None, fp_type, fp_type, uint32]
   )
   kernels['updateMotion'].set_scalar_arg_dtypes(
-    [None, None, None, None, None, float64, float64, uint32]
+    [None, None, None, None, None, fp_type, fp_type, uint32]
   )
   kernels['getRepulsiveForce'].set_scalar_arg_dtypes(
-    [None, None, None, None, None, float64, uint32]
+    [None, None, None, None, None, fp_type, uint32]
   )
   kernels['getRestraintForce'].set_scalar_arg_dtypes(
-    [None, None, None, None, None, None, float64, float64, uint32]
+    [None, None, None, None, None, None, fp_type, fp_type, uint32]
   )
   return kernels
 

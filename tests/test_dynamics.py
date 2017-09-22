@@ -43,6 +43,8 @@ def test_get_stats():
 
 
 def test_restraint_force(ctx, cq, kernels):
+    from nuc_dynamics import fp_type
+
     # Forces are repulsive 0-1, zero 1-2, attractive 2-3, asymptotic 3+
     coords = np.array([
         [0.0, 0.0, 0.0, float('nan')],
@@ -51,17 +53,17 @@ def test_restraint_force(ctx, cq, kernels):
         [0.0, 0.0, 2.5, float('nan')],
         [0.0, 0.0, 3.5, float('nan')],
         [0.0, 0.0, 5.0, float('nan')],
-    ], dtype='float64')
+    ], dtype=fp_type)
     indices = np.array([
         [0, 1], [0, 2], [0, 3], [0, 4], [0, 5],
     ], dtype='int32')
-    weights = np.ones(len(indices), dtype='float64')
-    forces = np.zeros(coords.shape, dtype='float64')
+    weights = np.ones(len(indices), dtype=fp_type)
+    forces = np.zeros(coords.shape, dtype=fp_type)
     limits = np.ascontiguousarray(
-        np.broadcast_to([[1.0, 2.0]], (len(indices), 2)).astype('float64')
+        np.broadcast_to([[1.0, 2.0]], (len(indices), 2)).astype(fp_type)
     )
     ambig = np.arange(len(indices) + 1, dtype='int32')
-    forces = np.zeros(coords.shape, dtype='float64')
+    forces = np.zeros(coords.shape, dtype=fp_type)
 
     coords_buf = cl.Buffer(ctx, cl.mem_flags.COPY_HOST_PTR, hostbuf=coords)
     indices_buf = cl.Buffer(ctx, cl.mem_flags.COPY_HOST_PTR, hostbuf=indices)
@@ -78,7 +80,7 @@ def test_restraint_force(ctx, cq, kernels):
 
     (forces, _) = cl.enqueue_map_buffer(
         cq, forces_buf, cl.map_flags.READ,
-        0, forces.shape, np.dtype('float64'),
+        0, forces.shape, fp_type,
         wait_for=[e], is_blocking=True,
     )
     expected = np.array([
@@ -88,30 +90,33 @@ def test_restraint_force(ctx, cq, kernels):
         [0.0, 0.0,-0.5],
         [0.0, 0.0,-1.0],
         [0.0, 0.0,-1.0],
-    ], dtype='float64')
+    ], dtype=fp_type)
     expected[0] = -expected[1:].sum(axis=0)
 
-    print(forces)
     np.testing.assert_allclose(forces[:, :3], expected)
 
-def test_atom_fadd(ctx, cq):
+@pytest.mark.parametrize("func, dtype", [
+    ("atomic_fadd", 'float32'), ('atom_fadd', 'float64')
+])
+def test_atom_fadd(ctx, cq, func, dtype):
+    cl_dtype = {'float32': 'float', 'float64': 'double'}[dtype]
     kernel = ("""
-    kernel void test(global double * const sum, global const double * const inputs) {
-        atom_fadd(sum, inputs[get_global_id(0)]);
-    }""")
+    kernel void test(global {dtype} * const sum, global const {dtype} * const inputs) {{
+        {func}(sum, inputs[get_global_id(0)]);
+    }}""".format(func=func, dtype=cl_dtype))
     with (Path(__file__).parent.parent / "nuc_dynamics" / "kernels.cl").open() as f:
         program = cl.Program(ctx, f.read() + kernel).build()
 
-    values = np.ones(4000, dtype='float64')
+    values = np.ones(4000, dtype=dtype)
 
     values_buf = cl.Buffer(ctx, cl.mem_flags.COPY_HOST_PTR, hostbuf=values)
     sum_buf = cl.Buffer(
-        ctx, cl.mem_flags.COPY_HOST_PTR, hostbuf=np.zeros(1, dtype='float64')
+        ctx, cl.mem_flags.COPY_HOST_PTR, hostbuf=np.zeros(1, dtype=dtype)
     )
     e = program.test(cq, (len(values),), None, sum_buf, values_buf)
 
     (result, _) = cl.enqueue_map_buffer(
-        cq, sum_buf, cl.map_flags.READ, 0, 1, np.dtype('float64'),
+        cq, sum_buf, cl.map_flags.READ, 0, 1, dtype,
         wait_for=[e], is_blocking=True,
     )
     assert result[0] == values.sum()

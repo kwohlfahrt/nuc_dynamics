@@ -285,7 +285,9 @@ def test_bin_restraints():
         ((2, 3), (0.8, 1.1), 2, 1.0,),
         ((3, 5), (0.8, 1.1), 2, 1.0,),
     ], dtype=Restraint)
-    np.testing.assert_array_equal(bin_restraints(restraints), expected)
+    binned = bin_restraints(restraints)
+    for name in Restraint.names:
+        np.testing.assert_allclose(binned[name], expected[name])
 
 
 def test_merge_contacts():
