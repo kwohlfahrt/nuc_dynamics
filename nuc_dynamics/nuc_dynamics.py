@@ -503,9 +503,6 @@ def anneal_genome(contact_dict, images, particle_size,
 
         time_taken += dt
 
-      # Center
-      model_coords -= model_coords.mean(axis=0)
-
     # Convert from single coord array to dict keyed by chromosome
     coords_dict = unpack_chromo_coords(coords, points, seq_pos_dict)
 
