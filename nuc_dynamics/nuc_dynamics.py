@@ -392,7 +392,8 @@ def anneal_genome(contact_dict, images, particle_size,
                   contact_dist=(0.8, 1.2), backbone_dist=(0.1, 1.1),
                   image_weight=1.0, temp_range=(5000.0, 10.0), temp_steps=500,
                   dynamics_steps=100, time_step=0.001,
-                  random_seed=None, random_radius=10.0, num_models=1):
+                  random_seed=None, random_radius=10.0, num_models=1,
+                  printInterval=100):
     """
     Use chromosome contact data to generate distance restraints and then
     apply a simulated annealing protocul to generate/refine coordinates.
@@ -496,7 +497,8 @@ def anneal_genome(contact_dict, images, particle_size,
         dt = runDynamics(
           model_coords, masses, radii, repDists,
           restraints['indices'], restraints['dists'], restraints['weight'], ambiguity,
-          temp, time_step, dynamics_steps, repulse, dist
+          temp, time_step, dynamics_steps, repulse, dist,
+          printInterval=printInterval
         )
 
         time_taken += dt
@@ -588,6 +590,8 @@ def main(args=None):
                         help="The weighting to use for image-based restraints")
     parser.add_argument("--image-scale", type=float, default=1.0,
                         help="The scaling of the image coordinates")
+    parser.add_argument("--print-interval", type=int, default=0,
+                        help="The number of dynamics steps between stat logs")
 
     args = parser.parse_args(argv[1:] if args is None else args)
 
@@ -613,7 +617,7 @@ def main(args=None):
         dynamics_steps=args.dyn_steps, time_step=args.time_step,
         # To set up starting coords
         random_seed=args.seed, random_radius=args.random_radius,
-        num_models=args.models,
+        num_models=args.models, printInterval=args.print_interval,
     )
 
     # Does not deal with sequences of variable length strings
