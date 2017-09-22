@@ -594,9 +594,10 @@ def main(args=None):
 
     # Load image coordinates, center and scale
     image_coords = {name: load_points(Path(path)) for name, path in args.image}
-    image_mean = concatenate(list(image_coords.values())).mean(axis=0)
-    image_coords = {k: (v - image_mean) * args.image_scale
-                    for k, v in image_coords.items()}
+    if image_coords:
+        image_mean = concatenate(list(image_coords.values())).mean(axis=0)
+        image_coords = {k: (v - image_mean) * args.image_scale
+                        for k, v in image_coords.items()}
 
     contacts = merge_dicts(*map(load_ncc_file, map(str, args.contacts)))
     contacts = remove_isolated_contacts(
