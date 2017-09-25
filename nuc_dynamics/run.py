@@ -35,7 +35,7 @@ def runDynamics(ctx, cq, kernels, collider,
                 restIndices_buf, restLimits_buf, restWeights_buf, nRest,
                 restAmbig_buf, nAmbig,
                 tRef=1000.0, tStep=0.001, nSteps=1000, fConstR=1.0, fConstD=25.0,
-                beta=10.0, tTaken=0.0, printInterval=10000, tot0=20.458):
+                ambigExp=4, beta=10.0, tTaken=0.0, printInterval=10000, tot0=20.458):
 
   if nCoords < 2:
     raise NucCythonError('Too few coodinates')
@@ -128,7 +128,7 @@ def runDynamics(ctx, cq, kernels, collider,
   e = kernels['getRestraintForce'](
       cq, (roundUp(nAmbig-1, 64),), None,
       restIndices_buf, restLimits_buf, restWeights_buf, restAmbig_buf,
-      coords_buf, forces_buf, fConstD, 0.5, nAmbig-1,
+      coords_buf, forces_buf, fConstD, 0.5, ambigExp, nAmbig-1,
       wait_for=[zero_forces]
   )
   cl.wait_for_events([cl.enqueue_barrier(cq)])
@@ -192,7 +192,7 @@ def runDynamics(ctx, cq, kernels, collider,
     e = kernels['getRestraintForce'](
       cq, (roundUp(nAmbig-1, 64),), None,
       restIndices_buf, restLimits_buf, restWeights_buf, restAmbig_buf,
-      coords_buf, forces_buf, fConstD, 0.5, nAmbig-1,
+      coords_buf, forces_buf, fConstD, 0.5, ambigExp, nAmbig-1,
       wait_for=[zero_forces]
     )
     cl.wait_for_events([cl.enqueue_barrier(cq)])

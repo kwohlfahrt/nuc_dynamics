@@ -110,8 +110,7 @@ kernel void getRestraintForce(global const uint2 * const restIndices,
                               global const VTYPE * const coords,
                               global DTYPE * const forces,
                               const DTYPE fConst, const DTYPE switchRatio,
-                              const uint n) {
-    const unsigned int exp = 4;
+                              const unsigned int exp, const uint n) {
     if (get_global_id(0) >= n)
         return;
     const size_t i = restAmbig[get_global_id(0)];

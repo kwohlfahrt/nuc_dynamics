@@ -419,7 +419,7 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
                   image_weight=1.0, temp_range=(5000.0, 10.0), temp_steps=500,
                   dynamics_steps=100, time_step=0.001,
                   random_seed=None, random_radius=10.0, num_models=1,
-                  printInterval=100):
+                  ambig_exponent=4, printInterval=100):
     """
     Use chromosome contact data to generate distance restraints and then
     apply a simulated annealing protocul to generate/refine coordinates.
@@ -579,7 +579,7 @@ def anneal_genome(ctx, cq, kernels, contact_dict, images, particle_size,
           rest_indices_buf, rest_limits_buf, rest_weights_buf, len(restraints),
           ambiguity_buf, len(ambiguity),
           temp, time_step, dynamics_steps, repulse, dist,
-          printInterval=printInterval
+          ambigExp=ambig_exponent, printInterval=printInterval
         )
 
         time_taken += dt
@@ -654,7 +654,7 @@ def compile_kernels(ctx):
     [None, None, None, None, None, fp_type, uint32]
   )
   kernels['getRestraintForce'].set_scalar_arg_dtypes(
-    [None, None, None, None, None, None, fp_type, fp_type, uint32]
+    [None, None, None, None, None, None, fp_type, fp_type, uint32, uint32]
   )
   return kernels
 
@@ -703,6 +703,8 @@ def main(args=None):
                         help="The scaling of the image coordinates")
     parser.add_argument("--print-interval", type=int, default=0,
                         help="The number of dynamics steps between stat logs")
+    parser.add_argument("--ambiguous-exponent", type=int, default=4,
+                        help="The exponent to use for ambiguous distances")
 
     args = parser.parse_args(argv[1:] if args is None else args)
 
@@ -730,6 +732,7 @@ def main(args=None):
         # To set up starting coords
         random_seed=args.seed, random_radius=args.random_radius,
         num_models=args.models, printInterval=args.print_interval,
+        ambig_exponent=args.ambiguous_exponent
     )
 
     # Does not deal with sequences of variable length strings
