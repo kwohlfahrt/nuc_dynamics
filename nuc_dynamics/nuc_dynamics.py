@@ -141,6 +141,8 @@ def remove_isolated_contacts(contact_dict, threshold=int(2e6), pos_error=100, ig
     supported |= (between(abs(pos_a - pos_b.T), pos_error, threshold).any(axis=0) &
                   between(abs(pos_b - pos_a.T), pos_error, threshold).any(axis=0))
 
+    if not supported.any():
+        continue
     new_contacts[chromoA][chromoB] = contacts[supported]
   return dict(new_contacts)
 
@@ -340,6 +342,8 @@ def calc_restraints(contact_dict, pos_dict,
 
   r = defaultdict(dict)
   for (chr_a, chr_b), contacts in flatten_dict(contact_dict).items():
+    if len(contacts) < 1:
+        continue
     r[chr_a][chr_b] = empty(len(contacts), dtype=Restraint)
 
     idxs_a = searchsorted(pos_dict[chr_a], contacts['pos'][:, 0])
